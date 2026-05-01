@@ -1,8 +1,9 @@
-import Link from "next/link";
+"use client";
+
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { initials, cn } from "@/lib/utils";
-import { userById } from "@/lib/mock-data";
+import { useStore } from "@/lib/store";
 import { STATUS_LABELS } from "@/lib/kanban-rules";
 import type { Task } from "@/lib/types";
 import { Calendar } from "lucide-react";
@@ -24,16 +25,26 @@ const COLOR_DOT: Record<Task["color"], string> = {
   red: "bg-red-500",
 };
 
-export function TaskRow({ task }: { task: Task }) {
-  const writer = userById(task.writerId);
-  const editor = task.editorId ? userById(task.editorId) : undefined;
+export function TaskRow({
+  task,
+  onOpen,
+}: {
+  task: Task;
+  onOpen?: (id: string) => void;
+}) {
+  const { users } = useStore();
+  const writer = users.find((u) => u.id === task.writerId);
+  const editor = task.editorId
+    ? users.find((u) => u.id === task.editorId)
+    : undefined;
   const due = new Date(task.deadline);
   const overdue = isPast(due) && task.status !== "complete";
 
   return (
-    <Link
-      href={`/board?task=${task.id}`}
-      className="group flex items-center gap-3 px-4 py-3 hover:bg-accent/60 transition-colors"
+    <button
+      type="button"
+      onClick={() => onOpen?.(task.id)}
+      className="group w-full flex items-center gap-3 px-4 py-3 hover:bg-accent/60 transition-colors text-left"
     >
       <span className={cn("h-2 w-2 rounded-full", COLOR_DOT[task.color])} />
       <div className="min-w-0 flex-1">
@@ -60,6 +71,6 @@ export function TaskRow({ task }: { task: Task }) {
           </AvatarFallback>
         </Avatar>
       )}
-    </Link>
+    </button>
   );
 }

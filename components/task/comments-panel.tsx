@@ -1,0 +1,138 @@
+"use client";
+
+import { useState } from "react";
+import { Check, MessageSquare, Send } from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { useStore } from "@/lib/store";
+import { useRole } from "@/lib/role-context";
+import { canComment } from "@/lib/permissions";
+import { initials, cn } from "@/lib/utils";
+import { format } from "date-fns";
+import type { Submission, Task } from "@/lib/types";
+
+export function CommentsPanel({
+  task,
+  submission,
+}: {
+  task: Task;
+  submission?: Submission;
+}) {
+  const { user } = useRole();
+  const { comments, users, addComment, toggleResolveComment } = useStore();
+  const [draft, setDraft] = useState("");
+
+  const allowed = canComment({ task, user });
+  const items = submission
+    ? comments
+        .filter((c) => c.submissionId === submission.id)
+        .sort(
+          (a, b) =>
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        )
+    : [];
+
+  if (!submission) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Comments appear once a submission exists.
+      </p>
+    );
+  }
+
+  function send() {
+    if (!draft.trim() || !submission) return;
+    addComment({
+      submissionId: submission.id,
+      authorId: user.id,
+      body: draft.trim(),
+      inline: false,
+    });
+    setDraft("");
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {items.length === 0 ? (
+        <div className="rounded-md border border-dashed border-border px-4 py-6 text-center">
+          <MessageSquare className="h-5 w-5 text-muted-foreground mx-auto mb-1.5" />
+          <p className="text-sm font-medium">No comments yet</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Leave feedback for the writer.
+          </p>
+        </div>
+      ) : (
+        <ul className="space-y-3">
+          {items.map((c) => {
+            const author = users.find((u) => u.id === c.authorId);
+            return (
+              <li
+                key={c.id}
+                className={cn(
+                  "rounded-lg border border-border bg-card p-3",
+                  c.resolved && "opacity-60"
+                )}
+              >
+                <div className="flex items-start gap-3">
+                  <Avatar className="h-7 w-7">
+                    <AvatarFallback className="text-[10px]">
+                      {initials(author?.name ?? "?")}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">{author?.name}</p>
+                      <span className="text-[10px] text-muted-foreground">
+                        {format(new Date(c.createdAt), "MMM d, h:mm a")}
+                      </span>
+                      {c.inline && <Badge variant="secondary">Inline</Badge>}
+                    </div>
+                    <p className="text-sm mt-1 leading-relaxed">{c.body}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleResolveComment(c.id)}
+                    className={cn(
+                      "text-xs flex items-center gap-1 rounded-md px-2 py-1 transition-colors",
+                      c.resolved
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "text-muted-foreground hover:bg-accent"
+                    )}
+                  >
+                    <Check className="h-3 w-3" />
+                    {c.resolved ? "Resolved" : "Resolve"}
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {allowed ? (
+        <div className="rounded-lg border border-border bg-card p-2">
+          <Textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Write a comment…"
+            className="min-h-[64px] border-0 shadow-none focus-visible:ring-0 px-2"
+          />
+          <div className="flex items-center justify-between px-2 pb-1">
+            <p className="text-[10px] text-muted-foreground">
+              Inline comments anchor to highlighted text (coming soon).
+            </p>
+            <Button size="sm" onClick={send} disabled={!draft.trim()}>
+              <Send className="h-3.5 w-3.5" /> Comment
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          You don't have permission to comment on this task.
+        </p>
+      )}
+    </div>
+  );
+}

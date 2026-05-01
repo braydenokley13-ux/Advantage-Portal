@@ -5,8 +5,9 @@ import { AnimatePresence } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TaskCard } from "./task-card";
+import { TaskDrawer } from "@/components/task/task-drawer";
 import { useRole } from "@/lib/role-context";
-import { tasks as seedTasks } from "@/lib/mock-data";
+import { useStore } from "@/lib/store";
 import { visibleTasks } from "@/lib/visibility";
 import {
   STATUS_LABELS,
@@ -22,10 +23,11 @@ type BlockedToast = { title: string; reason: string } | null;
 
 export function KanbanBoard() {
   const { role, user } = useRole();
-  const [tasks, setTasks] = useState<Task[]>(seedTasks);
+  const { tasks, setTaskStatus } = useStore();
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [hoveredCol, setHoveredCol] = useState<TaskStatus | null>(null);
   const [blocked, setBlocked] = useState<BlockedToast>(null);
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
   const myTasks = useMemo(
     () => visibleTasks({ tasks, role, userId: user.id }),
@@ -81,10 +83,22 @@ export function KanbanBoard() {
       return;
     }
     if (task.status === to) return;
+    if (to === "submitted") {
+      showBlocked(
+        task.title,
+        "Use the Submission flow — drag-to-submit is disabled."
+      );
+      return;
+    }
+    if (task.status === "submitted" && to === "complete") {
+      showBlocked(
+        task.title,
+        "Submitted work must go through editor review."
+      );
+      return;
+    }
 
-    setTasks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, status: to } : t))
-    );
+    setTaskStatus(task.id, to);
   }
 
   return (
@@ -138,6 +152,7 @@ export function KanbanBoard() {
                         isDragging={draggingId === task.id}
                         onDragStart={(e) => handleDragStart(task, e)}
                         onDragEnd={handleDragEnd}
+                        onClick={() => setOpenTaskId(task.id)}
                       />
                     );
                   })}
@@ -153,6 +168,12 @@ export function KanbanBoard() {
           );
         })}
       </div>
+
+      <TaskDrawer
+        taskId={openTaskId}
+        open={!!openTaskId}
+        onOpenChange={(v) => !v && setOpenTaskId(null)}
+      />
 
       {blocked && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 max-w-md">
@@ -188,16 +209,15 @@ function dropDeniedReason(args: {
   if (args.role === "writer" && !args.isOwn)
     return "Writers can only move their own tasks.";
   if (args.role === "writer")
-    return "Writers can only move between Not Started and In Progress. Submit work to advance.";
+    return "Writers move only between Not Started and In Progress.";
   return "Move not allowed.";
 }
 
 function transitionDeniedReason(from: TaskStatus, to: TaskStatus) {
   if (from === "in_progress" && to === "submitted")
-    return "Cannot drag into Submitted — use the Submit work flow.";
+    return "Cannot drag into Submitted — use the Submission flow.";
   if (from === "submitted" && to === "complete")
     return "Submitted work must be reviewed by an editor.";
-  if (from === "complete")
-    return "Complete tasks cannot be moved.";
+  if (from === "complete") return "Complete tasks cannot be moved.";
   return `Invalid transition: ${STATUS_LABELS[from]} → ${STATUS_LABELS[to]}.`;
 }

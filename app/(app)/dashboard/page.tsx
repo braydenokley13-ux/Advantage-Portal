@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   ClipboardList,
   Clock,
@@ -16,19 +16,22 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { TaskRow } from "@/components/task/task-row";
+import { TaskDrawer } from "@/components/task/task-drawer";
 import { PageHeader } from "@/components/page-header";
 import { useRole } from "@/lib/role-context";
-import { tasks, notifications, messages, userById } from "@/lib/mock-data";
+import { useStore } from "@/lib/store";
 import { visibleTasks } from "@/lib/visibility";
 import { initials } from "@/lib/utils";
 import { isPast, isWithinInterval, addDays, format } from "date-fns";
 
 export default function DashboardPage() {
   const { user, role } = useRole();
+  const { tasks, notifications, messages, users } = useStore();
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
   const myTasks = useMemo(
     () => visibleTasks({ tasks, role, userId: user.id }),
-    [role, user.id]
+    [tasks, role, user.id]
   );
 
   const stats = useMemo(() => {
@@ -65,6 +68,9 @@ export default function DashboardPage() {
     [myTasks]
   );
 
+  const writerCount = users.filter((u) => u.role === "writer").length;
+  const editorCount = users.filter((u) => u.role === "editor").length;
+
   const myNotifications = notifications
     .filter((n) => n.userId === user.id)
     .slice(0, 4);
@@ -87,16 +93,8 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         {role === "writer" && (
           <>
-            <StatCard
-              label="My tasks"
-              value={stats.total}
-              icon={ClipboardList}
-            />
-            <StatCard
-              label="In progress"
-              value={stats.inProgress}
-              icon={Clock}
-            />
+            <StatCard label="My tasks" value={stats.total} icon={ClipboardList} />
+            <StatCard label="In progress" value={stats.inProgress} icon={Clock} />
             <StatCard
               label="Due in 7 days"
               value={stats.dueSoon}
@@ -154,9 +152,9 @@ export default function DashboardPage() {
             />
             <StatCard
               label="Team"
-              value={users().writers + users().editors}
+              value={writerCount + editorCount}
               icon={Users}
-              delta={`${users().writers} writers · ${users().editors} editors`}
+              delta={`${writerCount} writers · ${editorCount} editors`}
             />
           </>
         )}
@@ -180,7 +178,7 @@ export default function DashboardPage() {
             ) : (
               <div className="divide-y divide-border">
                 {upcoming.map((t) => (
-                  <TaskRow key={t.id} task={t} />
+                  <TaskRow key={t.id} task={t} onOpen={setOpenTaskId} />
                 ))}
               </div>
             )}
@@ -230,7 +228,7 @@ export default function DashboardPage() {
             <CardContent className="p-0">
               <ul className="divide-y divide-border">
                 {recentMessages.map((m) => {
-                  const author = userById(m.authorId);
+                  const author = users.find((u) => u.id === m.authorId);
                   return (
                     <li key={m.id} className="px-4 py-3 flex gap-3">
                       <Avatar className="h-8 w-8">
@@ -259,6 +257,12 @@ export default function DashboardPage() {
           </Card>
         </div>
       </div>
+
+      <TaskDrawer
+        taskId={openTaskId}
+        open={!!openTaskId}
+        onOpenChange={(v) => !v && setOpenTaskId(null)}
+      />
     </div>
   );
 }
@@ -268,11 +272,6 @@ function dashboardSubtitle(role: string) {
   if (role === "editor") return "Submissions awaiting your review.";
   if (role === "leader") return "Team-wide overview of every story in flight.";
   return "Full system view.";
-}
-
-function users() {
-  // counts derived from mock data
-  return { writers: 3, editors: 2 };
 }
 
 function EmptyState({
@@ -294,4 +293,3 @@ function EmptyState({
     </div>
   );
 }
-

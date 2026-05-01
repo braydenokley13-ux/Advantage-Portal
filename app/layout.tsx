@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { RoleProvider } from "@/lib/role-context";
+import { StoreProvider } from "@/lib/store";
 
 export const metadata: Metadata = {
   title: "Advantage Portal",
@@ -15,7 +16,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <RoleProvider>{children}</RoleProvider>
+        <RoleProvider>
+          <StoreProvider>{children}</StoreProvider>
+        </RoleProvider>
       </body>
     </html>
   );
