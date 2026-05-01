@@ -191,6 +191,18 @@ In rough priority order:
 
 ---
 
+## Phase 2 completed
+
+The next round of work shipped Supabase persistence and the real moderation queue. Highlights:
+
+- Full schema + migrations in `supabase/migrations/0001_init.sql` (with seeds in `supabase/seed.sql`).
+- `lib/supabase/{env,browser,server}.ts` and `.env.example` for the data-mode switch.
+- `lib/api/supabase-adapter.ts` implementing the typed `ApiClient` against Postgres for the priority workflows (tasks, extensions, messages, moderation reports, notifications). Mock adapter remains for offline / demo.
+- `/admin/moderation` queue: filters, bulk actions, detail dialog with hide-message + internal-note audit trail, teen-safety guidance copy. Visible to leaders + admins.
+- Per-message **Report** UI now opens a reason picker with optional note, dedupes per (reporter, message), and creates a real `ModerationReport`. Hidden messages render `[message hidden by a moderator]` to non-moderators.
+
+Full details + setup steps live in `docs/supabase-persistence-and-moderation.md`.
+
 ## Files changed this pass
 
 See `git log claude/setup-opus-architect-5mL0q` for per-checkpoint commit messages. High-level surface:
