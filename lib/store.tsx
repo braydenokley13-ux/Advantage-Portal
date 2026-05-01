@@ -24,6 +24,10 @@ import type {
   Conversation,
   ExtensionRequest,
   Message,
+  ModerationReason,
+  ModerationReport,
+  ModerationSeverity,
+  ModerationStatus,
   Notification,
   NotificationKind,
   Review,
@@ -47,6 +51,7 @@ type StoreValue = {
   conversations: Conversation[];
   messages: Message[];
   notifications: Notification[];
+  moderationReports: ModerationReport[];
 
   setTaskStatus: (taskId: string, status: TaskStatus) => void;
   createTask: (input: {
@@ -130,6 +135,23 @@ type StoreValue = {
     decidedById: string;
     approve: boolean;
   }) => void;
+  createModerationReport: (input: {
+    messageId: string;
+    reporterId: string;
+    reason: ModerationReason;
+    reporterNote?: string;
+    severity?: ModerationSeverity;
+  }) => ModerationReport | null;
+  updateModerationReport: (
+    id: string,
+    patch: {
+      status?: ModerationStatus;
+      severity?: ModerationSeverity;
+      internalNote?: string;
+      resolvedById?: string;
+    }
+  ) => void;
+  hideMessage: (messageId: string) => void;
 };
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -150,6 +172,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [messages, setMessages] = useState<Message[]>(seedMessages);
   const [notifications, setNotifications] =
     useState<Notification[]>(seedNotifications);
+  const [moderationReports, setModerationReports] = useState<ModerationReport[]>(
+    []
+  );
   const [issuedReminderKeys, setIssuedReminderKeys] = useState<Set<string>>(
     () => new Set()
   );
@@ -518,6 +543,101 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [usersState, pushNotification]
   );
 
+  const createModerationReport = useCallback<
+    StoreValue["createModerationReport"]
+  >(
+    (input) => {
+      const message = messages.find((m) => m.id === input.messageId);
+      if (!message) return null;
+      // Dedupe: one report per (reporter, message). Subsequent calls bump
+      // the existing report's note instead of creating a new row.
+      const existing = moderationReports.find(
+        (r) =>
+          r.messageId === input.messageId && r.reporterId === input.reporterId
+      );
+      if (existing) {
+        if (input.reporterNote && input.reporterNote !== existing.reporterNote) {
+          setModerationReports((prev) =>
+            prev.map((r) =>
+              r.id === existing.id
+                ? {
+                    ...r,
+                    reporterNote: input.reporterNote,
+                    updatedAt: new Date().toISOString(),
+                  }
+                : r
+            )
+          );
+        }
+        return existing;
+      }
+      const now = new Date().toISOString();
+      const report: ModerationReport = {
+        id: nextId("rep"),
+        messageId: input.messageId,
+        conversationId: message.conversationId,
+        reportedUserId: message.authorId,
+        reporterId: input.reporterId,
+        reason: input.reason,
+        reporterNote: input.reporterNote,
+        status: "open",
+        severity: input.severity ?? "medium",
+        createdAt: now,
+        updatedAt: now,
+      };
+      setModerationReports((prev) => [report, ...prev]);
+      // Notify every admin so they triage. Leaders also get a heads-up so
+      // safety power is shared per the role policy.
+      for (const u of usersState.filter(
+        (x) => x.role === "admin" || x.role === "leader"
+      )) {
+        pushNotification({
+          userId: u.id,
+          kind: "comment",
+          title: "Message reported",
+          body: input.reporterNote?.slice(0, 100),
+        });
+      }
+      return report;
+    },
+    [messages, moderationReports, usersState, pushNotification]
+  );
+
+  const updateModerationReport = useCallback<
+    StoreValue["updateModerationReport"]
+  >((id, patch) => {
+    setModerationReports((prev) =>
+      prev.map((r) => {
+        if (r.id !== id) return r;
+        const becomingResolved =
+          (patch.status === "resolved" || patch.status === "dismissed") &&
+          r.status !== "resolved" &&
+          r.status !== "dismissed";
+        return {
+          ...r,
+          ...patch,
+          resolvedAt: becomingResolved
+            ? new Date().toISOString()
+            : r.resolvedAt,
+          updatedAt: new Date().toISOString(),
+        };
+      })
+    );
+  }, []);
+
+  const hideMessage = useCallback<StoreValue["hideMessage"]>((messageId) => {
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId
+          ? {
+              ...m,
+              hiddenAt: m.hiddenAt ? undefined : new Date().toISOString(),
+            }
+          : m
+      )
+    );
+  }, []);
+
   const decideExtension = useCallback<StoreValue["decideExtension"]>(
     (input) => {
       setTasks((prev) =>
@@ -569,6 +689,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       conversations,
       messages,
       notifications,
+      moderationReports,
       setTaskStatus,
       createTask,
       updateTask,
@@ -588,6 +709,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       resetDeadlineReminders,
       requestExtension,
       decideExtension,
+      createModerationReport,
+      updateModerationReport,
+      hideMessage,
     }),
     [
       usersState,
@@ -598,6 +722,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       conversations,
       messages,
       notifications,
+      moderationReports,
       setTaskStatus,
       createTask,
       updateTask,
@@ -617,6 +742,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       resetDeadlineReminders,
       requestExtension,
       decideExtension,
+      createModerationReport,
+      updateModerationReport,
+      hideMessage,
     ]
   );
 

@@ -15,6 +15,7 @@ import type {
   CommentZ,
   ConversationZ,
   MessageZ,
+  ModerationReportZ,
   NotificationZ,
   ReviewZ,
   SubmissionZ,
@@ -96,6 +97,17 @@ export function useNotifications(): ApiResource<NotificationZ[]> {
   return useApiResource(
     () => api.listNotifications(currentUser?.id),
     [api, currentUser?.id]
+  );
+}
+
+// ── Moderation reports ──────────────────────────────────────────────────────
+export function useModerationReports(filter?: {
+  status?: ModerationReportZ["status"];
+}): ApiResource<ModerationReportZ[]> {
+  const api = useApiClient();
+  return useApiResource(
+    () => api.listModerationReports(filter),
+    [api, filter?.status]
   );
 }
 

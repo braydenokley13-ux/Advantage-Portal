@@ -248,6 +248,7 @@ export const MessageSchema = z.object({
   body: z.string(),
   createdAt: isoDate,
   pinnedAt: isoDate.optional(),
+  hiddenAt: isoDate.optional(),
 });
 export type MessageZ = z.infer<typeof MessageSchema>;
 
@@ -285,6 +286,69 @@ export type NotificationCreateInputZ = z.infer<typeof NotificationCreateInput>;
 // Aggregate exports
 // ────────────────────────────────────────────────────────────────────────────
 
+// ────────────────────────────────────────────────────────────────────────────
+// Moderation reports (teen-safety)
+// ────────────────────────────────────────────────────────────────────────────
+
+export const ModerationStatusSchema = z.enum([
+  "open",
+  "in_review",
+  "resolved",
+  "dismissed",
+]);
+export type ModerationStatusZ = z.infer<typeof ModerationStatusSchema>;
+
+export const ModerationSeveritySchema = z.enum(["low", "medium", "high"]);
+export type ModerationSeverityZ = z.infer<typeof ModerationSeveritySchema>;
+
+export const ModerationReasonSchema = z.enum([
+  "inappropriate_language",
+  "bullying_or_harassment",
+  "personal_information",
+  "off_topic_or_spam",
+  "other",
+]);
+export type ModerationReasonZ = z.infer<typeof ModerationReasonSchema>;
+
+export const ModerationReportSchema = z.object({
+  id: z.string(),
+  messageId: z.string(),
+  conversationId: z.string(),
+  reportedUserId: z.string(),
+  reporterId: z.string(),
+  reason: ModerationReasonSchema,
+  reporterNote: z.string().optional(),
+  status: ModerationStatusSchema,
+  severity: ModerationSeveritySchema,
+  resolvedById: z.string().optional(),
+  resolvedAt: isoDate.optional(),
+  internalNote: z.string().optional(),
+  createdAt: isoDate,
+  updatedAt: isoDate,
+});
+export type ModerationReportZ = z.infer<typeof ModerationReportSchema>;
+
+export const ModerationReportCreateInput = z.object({
+  messageId: z.string(),
+  reporterId: z.string(),
+  reason: ModerationReasonSchema.default("other"),
+  reporterNote: z.string().optional(),
+  severity: ModerationSeveritySchema.optional(),
+});
+export type ModerationReportCreateInputZ = z.infer<
+  typeof ModerationReportCreateInput
+>;
+
+export const ModerationReportUpdateInput = z.object({
+  status: ModerationStatusSchema.optional(),
+  severity: ModerationSeveritySchema.optional(),
+  internalNote: z.string().optional(),
+  resolvedById: z.string().optional(),
+});
+export type ModerationReportUpdateInputZ = z.infer<
+  typeof ModerationReportUpdateInput
+>;
+
 export const Schemas = {
   User: UserSchema,
   Task: TaskSchema,
@@ -294,4 +358,5 @@ export const Schemas = {
   Conversation: ConversationSchema,
   Message: MessageSchema,
   Notification: NotificationSchema,
+  ModerationReport: ModerationReportSchema,
 } as const;

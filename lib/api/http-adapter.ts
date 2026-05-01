@@ -107,4 +107,20 @@ export class HttpApiClient implements ApiClient {
   markAllNotificationsRead() {
     return this.notImplemented("markAllNotificationsRead");
   }
+
+  requestExtension() { return this.notImplemented("requestExtension"); }
+  decideExtension() { return this.notImplemented("decideExtension"); }
+  listModerationReports() {
+    return this.notImplemented("listModerationReports");
+  }
+  createModerationReport() {
+    return this.notImplemented("createModerationReport");
+  }
+  updateModerationReport() {
+    return this.notImplemented("updateModerationReport");
+  }
+  bulkUpdateModerationReports() {
+    return this.notImplemented("bulkUpdateModerationReports");
+  }
+  hideMessage() { return this.notImplemented("hideMessage"); }
 }

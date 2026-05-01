@@ -120,6 +120,9 @@ export interface Message {
   body: string;
   createdAt: string;
   pinnedAt?: string;
+  /** When set, the message is hidden by a moderator. The body should not
+   *  render to non-admins; admins see it with a "hidden" indicator. */
+  hiddenAt?: string;
 }
 
 export type NotificationKind =
@@ -140,4 +143,36 @@ export interface Notification {
   body?: string;
   read: boolean;
   createdAt: string;
+}
+
+export type ModerationStatus =
+  | "open"
+  | "in_review"
+  | "resolved"
+  | "dismissed";
+
+export type ModerationSeverity = "low" | "medium" | "high";
+
+export type ModerationReason =
+  | "inappropriate_language"
+  | "bullying_or_harassment"
+  | "personal_information"
+  | "off_topic_or_spam"
+  | "other";
+
+export interface ModerationReport {
+  id: string;
+  messageId: string;
+  conversationId: string;
+  reportedUserId: string;
+  reporterId: string;
+  reason: ModerationReason;
+  reporterNote?: string;
+  status: ModerationStatus;
+  severity: ModerationSeverity;
+  resolvedById?: string;
+  resolvedAt?: string;
+  internalNote?: string;
+  createdAt: string;
+  updatedAt: string;
 }
