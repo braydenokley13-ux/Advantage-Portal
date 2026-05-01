@@ -223,18 +223,33 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       title: string;
       body?: string;
     }) => {
-      setNotifications((prev) => [
-        {
-          id: nextId("n"),
-          userId: input.userId,
-          kind: input.kind,
-          title: input.title,
-          body: input.body,
-          read: false,
-          createdAt: new Date().toISOString(),
-        },
-        ...prev,
-      ]);
+      // Dedupe: skip identical (userId+kind+title) notifications fired within
+      // the last 60 seconds to keep the inbox useful when multiple events
+      // (in-app/email/push fan-out) arrive for the same logical action.
+      // Real backend would dedup at delivery; mock dedup keeps demo clean.
+      setNotifications((prev) => {
+        const cutoff = Date.now() - 60_000;
+        const recentDuplicate = prev.find(
+          (n) =>
+            n.userId === input.userId &&
+            n.kind === input.kind &&
+            n.title === input.title &&
+            new Date(n.createdAt).getTime() > cutoff
+        );
+        if (recentDuplicate) return prev;
+        return [
+          {
+            id: nextId("n"),
+            userId: input.userId,
+            kind: input.kind,
+            title: input.title,
+            body: input.body,
+            read: false,
+            createdAt: new Date().toISOString(),
+          },
+          ...prev,
+        ];
+      });
     },
     []
   );

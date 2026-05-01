@@ -136,9 +136,15 @@ export default function NotificationPreferencesPage() {
         </CardContent>
       </Card>
 
-      <p className="text-xs text-muted-foreground">
-        Preferences are stored locally for this demo session.
-      </p>
+      <div className="rounded-lg border border-border bg-secondary/40 p-4 space-y-1">
+        <p className="text-xs font-medium">How we keep this quiet</p>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Identical alerts are deduped within a short window so you don't get
+          pinged three times for the same thing across in-app, push, and email.
+          You can mute any event type per channel above. Preferences are stored
+          locally for this demo session.
+        </p>
+      </div>
     </div>
   );
 }

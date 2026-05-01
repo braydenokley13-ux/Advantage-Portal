@@ -196,6 +196,22 @@ export const messages: Message[] = [
     body: "Reminder: Issue #42 ships Friday.",
     createdAt: daysAgo(1),
   },
+  {
+    id: "m4",
+    conversationId: "c1",
+    authorId: "u7",
+    body: "House rules refresher — be kind in comments, cite your sources, and flag anything that feels off.",
+    createdAt: daysAgo(2),
+    pinnedAt: daysAgo(2),
+  },
+  {
+    id: "m5",
+    conversationId: "c1",
+    authorId: "u6",
+    body: "Welcome to the new writers joining this issue! Open the brief, ask questions, and don't be afraid to request an extension if you need one.",
+    createdAt: daysAgo(3),
+    pinnedAt: daysAgo(3),
+  },
 ];
 
 export const notifications: Notification[] = [
