@@ -22,7 +22,12 @@ import {
 import type {
   Comment,
   Conversation,
+  ExtensionRequest,
   Message,
+  ModerationReason,
+  ModerationReport,
+  ModerationSeverity,
+  ModerationStatus,
   Notification,
   NotificationKind,
   Review,
@@ -46,6 +51,7 @@ type StoreValue = {
   conversations: Conversation[];
   messages: Message[];
   notifications: Notification[];
+  moderationReports: ModerationReport[];
 
   setTaskStatus: (taskId: string, status: TaskStatus) => void;
   createTask: (input: {
@@ -55,10 +61,24 @@ type StoreValue = {
     editorId?: string;
     deadline: string;
     color?: TaskColor;
+    wordCountTarget?: number;
+    citationsRequired?: boolean;
   }) => Task;
   updateTask: (
     taskId: string,
-    patch: Partial<Pick<Task, "title" | "instructions" | "writerId" | "editorId" | "deadline" | "color">>
+    patch: Partial<
+      Pick<
+        Task,
+        | "title"
+        | "instructions"
+        | "writerId"
+        | "editorId"
+        | "deadline"
+        | "color"
+        | "wordCountTarget"
+        | "citationsRequired"
+      >
+    >
   ) => void;
   updateUserRole: (userId: string, role: Role) => void;
   setUserActive: (userId: string, active: boolean) => void;
@@ -104,6 +124,34 @@ type StoreValue = {
   }) => void;
   runDeadlineScan: (input?: { now?: Date }) => DeadlineReminder[];
   resetDeadlineReminders: () => void;
+  requestExtension: (input: {
+    taskId: string;
+    requestedById: string;
+    newDeadline: string;
+    reason: string;
+  }) => ExtensionRequest;
+  decideExtension: (input: {
+    taskId: string;
+    decidedById: string;
+    approve: boolean;
+  }) => void;
+  createModerationReport: (input: {
+    messageId: string;
+    reporterId: string;
+    reason: ModerationReason;
+    reporterNote?: string;
+    severity?: ModerationSeverity;
+  }) => ModerationReport | null;
+  updateModerationReport: (
+    id: string,
+    patch: {
+      status?: ModerationStatus;
+      severity?: ModerationSeverity;
+      internalNote?: string;
+      resolvedById?: string;
+    }
+  ) => void;
+  hideMessage: (messageId: string) => void;
 };
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -124,6 +172,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [messages, setMessages] = useState<Message[]>(seedMessages);
   const [notifications, setNotifications] =
     useState<Notification[]>(seedNotifications);
+  const [moderationReports, setModerationReports] = useState<ModerationReport[]>(
+    []
+  );
   const [issuedReminderKeys, setIssuedReminderKeys] = useState<Set<string>>(
     () => new Set()
   );
@@ -145,6 +196,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       status: "not_started",
       color: input.color ?? "green",
       createdAt: new Date().toISOString(),
+      wordCountTarget: input.wordCountTarget,
+      citationsRequired: input.citationsRequired,
     };
     setTasks((prev) => [t, ...prev]);
 
@@ -223,18 +276,33 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       title: string;
       body?: string;
     }) => {
-      setNotifications((prev) => [
-        {
-          id: nextId("n"),
-          userId: input.userId,
-          kind: input.kind,
-          title: input.title,
-          body: input.body,
-          read: false,
-          createdAt: new Date().toISOString(),
-        },
-        ...prev,
-      ]);
+      // Dedupe: skip identical (userId+kind+title) notifications fired within
+      // the last 60 seconds to keep the inbox useful when multiple events
+      // (in-app/email/push fan-out) arrive for the same logical action.
+      // Real backend would dedup at delivery; mock dedup keeps demo clean.
+      setNotifications((prev) => {
+        const cutoff = Date.now() - 60_000;
+        const recentDuplicate = prev.find(
+          (n) =>
+            n.userId === input.userId &&
+            n.kind === input.kind &&
+            n.title === input.title &&
+            new Date(n.createdAt).getTime() > cutoff
+        );
+        if (recentDuplicate) return prev;
+        return [
+          {
+            id: nextId("n"),
+            userId: input.userId,
+            kind: input.kind,
+            title: input.title,
+            body: input.body,
+            read: false,
+            createdAt: new Date().toISOString(),
+          },
+          ...prev,
+        ];
+      });
     },
     []
   );
@@ -442,6 +510,169 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setIssuedReminderKeys(new Set());
   }, []);
 
+  const requestExtension = useCallback<StoreValue["requestExtension"]>(
+    (input) => {
+      const req: ExtensionRequest = {
+        id: nextId("ext"),
+        taskId: input.taskId,
+        requestedById: input.requestedById,
+        newDeadline: input.newDeadline,
+        reason: input.reason,
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      };
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === input.taskId ? { ...t, extensionRequest: req } : t
+        )
+      );
+      // Notify every leader/admin so an approver sees it. Per product
+      // direction, both leaders and admins can approve extensions.
+      for (const u of usersState.filter(
+        (x) => x.role === "leader" || x.role === "admin"
+      )) {
+        pushNotification({
+          userId: u.id,
+          kind: "task_assigned",
+          title: "Extension requested",
+          body: input.reason.slice(0, 120),
+        });
+      }
+      return req;
+    },
+    [usersState, pushNotification]
+  );
+
+  const createModerationReport = useCallback<
+    StoreValue["createModerationReport"]
+  >(
+    (input) => {
+      const message = messages.find((m) => m.id === input.messageId);
+      if (!message) return null;
+      // Dedupe: one report per (reporter, message). Subsequent calls bump
+      // the existing report's note instead of creating a new row.
+      const existing = moderationReports.find(
+        (r) =>
+          r.messageId === input.messageId && r.reporterId === input.reporterId
+      );
+      if (existing) {
+        if (input.reporterNote && input.reporterNote !== existing.reporterNote) {
+          setModerationReports((prev) =>
+            prev.map((r) =>
+              r.id === existing.id
+                ? {
+                    ...r,
+                    reporterNote: input.reporterNote,
+                    updatedAt: new Date().toISOString(),
+                  }
+                : r
+            )
+          );
+        }
+        return existing;
+      }
+      const now = new Date().toISOString();
+      const report: ModerationReport = {
+        id: nextId("rep"),
+        messageId: input.messageId,
+        conversationId: message.conversationId,
+        reportedUserId: message.authorId,
+        reporterId: input.reporterId,
+        reason: input.reason,
+        reporterNote: input.reporterNote,
+        status: "open",
+        severity: input.severity ?? "medium",
+        createdAt: now,
+        updatedAt: now,
+      };
+      setModerationReports((prev) => [report, ...prev]);
+      // Notify every admin so they triage. Leaders also get a heads-up so
+      // safety power is shared per the role policy.
+      for (const u of usersState.filter(
+        (x) => x.role === "admin" || x.role === "leader"
+      )) {
+        pushNotification({
+          userId: u.id,
+          kind: "comment",
+          title: "Message reported",
+          body: input.reporterNote?.slice(0, 100),
+        });
+      }
+      return report;
+    },
+    [messages, moderationReports, usersState, pushNotification]
+  );
+
+  const updateModerationReport = useCallback<
+    StoreValue["updateModerationReport"]
+  >((id, patch) => {
+    setModerationReports((prev) =>
+      prev.map((r) => {
+        if (r.id !== id) return r;
+        const becomingResolved =
+          (patch.status === "resolved" || patch.status === "dismissed") &&
+          r.status !== "resolved" &&
+          r.status !== "dismissed";
+        return {
+          ...r,
+          ...patch,
+          resolvedAt: becomingResolved
+            ? new Date().toISOString()
+            : r.resolvedAt,
+          updatedAt: new Date().toISOString(),
+        };
+      })
+    );
+  }, []);
+
+  const hideMessage = useCallback<StoreValue["hideMessage"]>((messageId) => {
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId
+          ? {
+              ...m,
+              hiddenAt: m.hiddenAt ? undefined : new Date().toISOString(),
+            }
+          : m
+      )
+    );
+  }, []);
+
+  const decideExtension = useCallback<StoreValue["decideExtension"]>(
+    (input) => {
+      setTasks((prev) =>
+        prev.map((t) => {
+          if (t.id !== input.taskId || !t.extensionRequest) return t;
+          const decided: ExtensionRequest = {
+            ...t.extensionRequest,
+            status: input.approve ? "approved" : "denied",
+            decidedById: input.decidedById,
+            decidedAt: new Date().toISOString(),
+          };
+          // On approval, slide the task deadline forward.
+          return {
+            ...t,
+            deadline: input.approve
+              ? decided.newDeadline
+              : t.deadline,
+            extensionRequest: decided,
+          };
+        })
+      );
+      const task = tasks.find((t) => t.id === input.taskId);
+      if (task?.extensionRequest) {
+        pushNotification({
+          userId: task.extensionRequest.requestedById,
+          kind: "task_assigned",
+          title: input.approve
+            ? `Extension approved: ${task.title}`
+            : `Extension denied: ${task.title}`,
+        });
+      }
+    },
+    [tasks, pushNotification]
+  );
+
   const markAllRead = useCallback((userId: string) => {
     setNotifications((prev) =>
       prev.map((n) => (n.userId === userId ? { ...n, read: true } : n))
@@ -458,6 +689,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       conversations,
       messages,
       notifications,
+      moderationReports,
       setTaskStatus,
       createTask,
       updateTask,
@@ -475,6 +707,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       pushNotification,
       runDeadlineScan,
       resetDeadlineReminders,
+      requestExtension,
+      decideExtension,
+      createModerationReport,
+      updateModerationReport,
+      hideMessage,
     }),
     [
       usersState,
@@ -485,6 +722,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       conversations,
       messages,
       notifications,
+      moderationReports,
       setTaskStatus,
       createTask,
       updateTask,
@@ -502,6 +740,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       pushNotification,
       runDeadlineScan,
       resetDeadlineReminders,
+      requestExtension,
+      decideExtension,
+      createModerationReport,
+      updateModerationReport,
+      hideMessage,
     ]
   );
 

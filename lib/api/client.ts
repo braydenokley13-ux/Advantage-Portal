@@ -16,6 +16,9 @@ import type {
   ConversationZ,
   MessageCreateInputZ,
   MessageZ,
+  ModerationReportCreateInputZ,
+  ModerationReportUpdateInputZ,
+  ModerationReportZ,
   NotificationCreateInputZ,
   NotificationZ,
   ReviewCreateInputZ,
@@ -29,6 +32,20 @@ import type {
   TaskZ,
   UserZ,
 } from "@/lib/contracts";
+import type { ExtensionRequest } from "@/lib/types";
+
+export interface ExtensionRequestCreateInput {
+  taskId: string;
+  requestedById: string;
+  newDeadline: string;
+  reason: string;
+}
+
+export interface ExtensionRequestDecideInput {
+  taskId: string;
+  decidedById: string;
+  approve: boolean;
+}
 
 /** All adapter methods are async to match the eventual HTTP shape. */
 export interface ApiClient {
@@ -73,12 +90,33 @@ export interface ApiClient {
   pushNotification(input: NotificationCreateInputZ): Promise<NotificationZ>;
   markNotificationRead(id: string, read?: boolean): Promise<NotificationZ>;
   markAllNotificationsRead(userId: string): Promise<void>;
+
+  // ── Extension requests ────────────────────────────────────────────────────
+  requestExtension(input: ExtensionRequestCreateInput): Promise<ExtensionRequest>;
+  decideExtension(input: ExtensionRequestDecideInput): Promise<void>;
+
+  // ── Moderation reports ────────────────────────────────────────────────────
+  listModerationReports(filter?: {
+    status?: ModerationReportZ["status"];
+  }): Promise<ModerationReportZ[]>;
+  createModerationReport(
+    input: ModerationReportCreateInputZ
+  ): Promise<ModerationReportZ>;
+  updateModerationReport(
+    id: string,
+    patch: ModerationReportUpdateInputZ
+  ): Promise<ModerationReportZ>;
+  bulkUpdateModerationReports(
+    ids: string[],
+    patch: ModerationReportUpdateInputZ
+  ): Promise<ModerationReportZ[]>;
+  hideMessage(messageId: string): Promise<MessageZ>;
 }
 
 /**
  * Tag describing which adapter is active. Useful for diagnostics in the UI.
  */
-export type ApiAdapterMode = "mock" | "http";
+export type ApiAdapterMode = "mock" | "supabase";
 
 export class ApiError extends Error {
   constructor(

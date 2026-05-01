@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, RefreshCw, XCircle } from "lucide-react";
+import { CheckCircle2, RefreshCw, Sparkles, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,43 @@ import { useRole } from "@/lib/role-context";
 import { canReview } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import type { ReviewDecision, Submission, Task } from "@/lib/types";
+
+/**
+ * Reusable editor feedback templates. Click to drop the template into the
+ * notes box; the editor still picks the decision and can edit the text.
+ * Wording is intentionally short and supportive for teen writers.
+ */
+const FEEDBACK_TEMPLATES: {
+  label: string;
+  decision: ReviewDecision;
+  body: string;
+}[] = [
+  {
+    label: "Great work — approved",
+    decision: "approved",
+    body: "Strong piece. Tight thesis, clean structure, sources line up. Approving.",
+  },
+  {
+    label: "Needs stronger sources",
+    decision: "changes_requested",
+    body: "Argument is solid but the sourcing doesn't carry it yet. Add at least two primary sources and tighten any claim that currently leans on a single link.",
+  },
+  {
+    label: "Clarify the argument",
+    decision: "changes_requested",
+    body: "I had to re-read to find the through-line. Lead with the thesis, then build the case. Each section should answer: how does this support the main point?",
+  },
+  {
+    label: "Shorten / simplify",
+    decision: "changes_requested",
+    body: "Trim ~20%. Cut anywhere two sentences could be one. Aim for clarity over cleverness — your readers are skimming.",
+  },
+  {
+    label: "Fix citations",
+    decision: "changes_requested",
+    body: "Citations need a pass: link primary sources, drop dead links, and keep the format consistent across the piece.",
+  },
+];
 
 const DECISIONS: {
   value: ReviewDecision;
@@ -158,14 +195,35 @@ export function ReviewPanel({
         })}
       </div>
 
+      <div className="space-y-1.5">
+        <p className="inline-flex items-center gap-1 text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
+          <Sparkles className="h-3 w-3" /> Quick feedback templates
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {FEEDBACK_TEMPLATES.map((tpl) => (
+            <button
+              key={tpl.label}
+              type="button"
+              onClick={() => {
+                setPicked(tpl.decision);
+                setNotes(tpl.body);
+              }}
+              className="rounded-full border border-border bg-card px-2.5 py-1 text-[11px] hover:bg-accent transition-colors"
+            >
+              {tpl.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <Textarea
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
         placeholder={
           picked === "changes_requested"
-            ? "What needs to change before this is ready?"
+            ? "What needs to change before this is ready? Be specific and kind."
             : picked === "rejected"
-              ? "Why are you rejecting this submission?"
+              ? "Why are you returning this submission?"
               : "Optional reviewer notes…"
         }
       />

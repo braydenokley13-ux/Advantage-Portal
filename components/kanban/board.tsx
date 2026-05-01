@@ -16,6 +16,7 @@ import {
   canDropTask,
   isValidTransition,
 } from "@/lib/kanban-rules";
+import { STATUS_DEFINITIONS, deriveSubState } from "@/lib/status";
 import type { Task, TaskStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +24,12 @@ type BlockedToast = { title: string; reason: string } | null;
 
 export function KanbanBoard() {
   const { role, user } = useRole();
-  const { tasks, setTaskStatus } = useStore();
+  const { tasks, submissions, reviews, setTaskStatus } = useStore();
+  const submissionTaskMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const s of submissions) m.set(s.id, s.taskId);
+    return m;
+  }, [submissions]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [hoveredCol, setHoveredCol] = useState<TaskStatus | null>(null);
   const [blocked, setBlocked] = useState<BlockedToast>(null);
@@ -128,12 +134,18 @@ export function KanbanBoard() {
               <div className="flex items-center justify-between px-4 py-3 border-b border-border/60">
                 <div className="flex items-center gap-2">
                   <ColumnDot status={status} />
-                  <h3 className="text-sm font-semibold tracking-tight">
+                  <h3
+                    className="text-sm font-semibold tracking-tight"
+                    title={STATUS_DEFINITIONS[status].description}
+                  >
                     {STATUS_LABELS[status]}
                   </h3>
                 </div>
                 <Badge variant="secondary">{items.length}</Badge>
               </div>
+              <p className="px-4 -mt-1 pb-2 text-[11px] text-muted-foreground">
+                {STATUS_DEFINITIONS[status].description}
+              </p>
 
               <div className="flex-1 p-3 space-y-2 scroll-thin overflow-y-auto">
                 <AnimatePresence>
@@ -144,6 +156,11 @@ export function KanbanBoard() {
                       isOwnTask: isOwn,
                       from: task.status,
                     });
+                    const sub = deriveSubState({
+                      task,
+                      reviews,
+                      submissionTaskMap,
+                    });
                     return (
                       <TaskCard
                         key={task.id}
@@ -153,6 +170,7 @@ export function KanbanBoard() {
                         onDragStart={(e) => handleDragStart(task, e)}
                         onDragEnd={handleDragEnd}
                         onClick={() => setOpenTaskId(task.id)}
+                        changesRequested={sub === "changes_requested"}
                       />
                     );
                   })}

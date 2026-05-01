@@ -9,11 +9,18 @@
 import { useMemo } from "react";
 import type { ApiClient } from "./client";
 import { useStore } from "@/lib/store";
-import type { Comment, Notification, Submission, User } from "@/lib/types";
+import type {
+  Comment,
+  ModerationReport,
+  Notification,
+  Submission,
+  User,
+} from "@/lib/types";
 import type {
   CommentZ,
   ConversationZ,
   MessageZ,
+  ModerationReportZ,
   NotificationZ,
   ReviewZ,
   SubmissionZ,
@@ -31,6 +38,7 @@ const asConversation = (c: import("@/lib/types").Conversation): ConversationZ =>
   c;
 const asMessage = (m: import("@/lib/types").Message): MessageZ => m;
 const asNotification = (n: Notification): NotificationZ => n;
+const asReport = (r: ModerationReport): ModerationReportZ => r;
 
 /**
  * Build a mock ApiClient bound to the live store snapshot. Re-created on every
@@ -172,6 +180,53 @@ export function useMockApiClient(currentUserId: string | null): ApiClient {
       },
       async markAllNotificationsRead(userId) {
         store.markAllRead(userId);
+      },
+
+      // ── Extension requests ──────────────────────────────────────────────
+      async requestExtension(input) {
+        return store.requestExtension(input);
+      },
+      async decideExtension(input) {
+        store.decideExtension(input);
+      },
+
+      // ── Moderation reports ──────────────────────────────────────────────
+      async listModerationReports(filter) {
+        const all = store.moderationReports.map(asReport);
+        return filter?.status
+          ? all.filter((r) => r.status === filter.status)
+          : all;
+      },
+      async createModerationReport(input) {
+        const r = store.createModerationReport({
+          messageId: input.messageId,
+          reporterId: input.reporterId,
+          reason: input.reason,
+          reporterNote: input.reporterNote,
+          severity: input.severity,
+        });
+        if (!r) {
+          throw new Error(`Message ${input.messageId} not found`);
+        }
+        return asReport(r);
+      },
+      async updateModerationReport(id, patch) {
+        store.updateModerationReport(id, patch);
+        const r = store.moderationReports.find((x) => x.id === id);
+        if (!r) throw new Error(`Report ${id} not found`);
+        return asReport(r);
+      },
+      async bulkUpdateModerationReports(ids, patch) {
+        for (const id of ids) store.updateModerationReport(id, patch);
+        return store.moderationReports
+          .filter((r) => ids.includes(r.id))
+          .map(asReport);
+      },
+      async hideMessage(messageId) {
+        store.hideMessage(messageId);
+        const m = store.messages.find((x) => x.id === messageId);
+        if (!m) throw new Error(`Message ${messageId} not found`);
+        return m as MessageZ;
       },
     };
   }, [store, currentUserId]);

@@ -4,9 +4,11 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { initials, cn } from "@/lib/utils";
 import { useStore } from "@/lib/store";
+import { useRole } from "@/lib/role-context";
 import { STATUS_LABELS } from "@/lib/kanban-rules";
+import { STATUS_DEFINITIONS } from "@/lib/status";
 import type { Task } from "@/lib/types";
-import { Calendar } from "lucide-react";
+import { BookOpen, Calendar, Clock } from "lucide-react";
 import { format, isPast, formatDistanceToNowStrict } from "date-fns";
 
 const STATUS_TONE: Record<
@@ -33,12 +35,15 @@ export function TaskRow({
   onOpen?: (id: string) => void;
 }) {
   const { users } = useStore();
+  const { user: viewer } = useRole();
   const writer = users.find((u) => u.id === task.writerId);
   const editor = task.editorId
     ? users.find((u) => u.id === task.editorId)
     : undefined;
   const due = new Date(task.deadline);
   const overdue = isPast(due) && task.status !== "complete";
+  // Don't echo the writer's own name back at them — they already know.
+  const showWriterName = writer && writer.id !== viewer.id;
 
   return (
     <button
@@ -58,10 +63,23 @@ export function TaskRow({
               ? `Overdue ${formatDistanceToNowStrict(due)}`
               : format(due, "MMM d")}
           </span>
-          {writer && <span>· {writer.name}</span>}
+          {showWriterName && <span>· {writer!.name}</span>}
+          {task.citationsRequired && (
+            <span className="inline-flex items-center gap-0.5">
+              · <BookOpen className="h-3 w-3" /> citations
+            </span>
+          )}
+          {task.extensionRequest?.status === "pending" && (
+            <span className="inline-flex items-center gap-0.5 text-amber-700">
+              · <Clock className="h-3 w-3" /> extension pending
+            </span>
+          )}
         </div>
       </div>
-      <Badge variant={STATUS_TONE[task.status]}>
+      <Badge
+        variant={STATUS_TONE[task.status]}
+        title={STATUS_DEFINITIONS[task.status].description}
+      >
         {STATUS_LABELS[task.status]}
       </Badge>
       {editor && (

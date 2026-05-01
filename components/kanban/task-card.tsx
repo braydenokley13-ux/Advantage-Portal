@@ -5,7 +5,14 @@ import { Badge } from "@/components/ui/badge";
 import { initials, cn } from "@/lib/utils";
 import { userById } from "@/lib/mock-data";
 import type { Task } from "@/lib/types";
-import { Calendar, GripVertical, MessageSquare } from "lucide-react";
+import {
+  BookOpen,
+  Calendar,
+  Clock,
+  GripVertical,
+  MessageSquare,
+  RefreshCw,
+} from "lucide-react";
 import { format, formatDistanceToNowStrict, isPast } from "date-fns";
 import { motion } from "framer-motion";
 
@@ -22,6 +29,7 @@ export function TaskCard({
   onDragEnd,
   isDragging,
   onClick,
+  changesRequested,
 }: {
   task: Task;
   draggable: boolean;
@@ -29,11 +37,14 @@ export function TaskCard({
   onDragEnd?: (e: React.DragEvent) => void;
   isDragging?: boolean;
   onClick?: () => void;
+  /** Derived sub-state: this in_progress task came back after changes were requested. */
+  changesRequested?: boolean;
 }) {
   const writer = userById(task.writerId);
   const editor = task.editorId ? userById(task.editorId) : undefined;
   const due = new Date(task.deadline);
   const overdue = isPast(due) && task.status !== "complete";
+  const pendingExtension = task.extensionRequest?.status === "pending";
 
   return (
     <motion.div
@@ -63,6 +74,31 @@ export function TaskCard({
           <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
             {task.instructions}
           </p>
+
+          {(task.wordCountTarget || task.citationsRequired || changesRequested || pendingExtension) && (
+            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              {changesRequested && (
+                <Badge variant="warning" className="gap-1 h-5 px-1.5 text-[10px]">
+                  <RefreshCw className="h-3 w-3" /> Changes requested
+                </Badge>
+              )}
+              {task.wordCountTarget && (
+                <Badge variant="outline" className="gap-1 h-5 px-1.5 text-[10px]">
+                  {task.wordCountTarget.toLocaleString()} words
+                </Badge>
+              )}
+              {task.citationsRequired && (
+                <Badge variant="outline" className="gap-1 h-5 px-1.5 text-[10px]">
+                  <BookOpen className="h-3 w-3" /> Citations
+                </Badge>
+              )}
+              {pendingExtension && (
+                <Badge variant="outline" className="gap-1 h-5 px-1.5 text-[10px]">
+                  <Clock className="h-3 w-3" /> Extension requested
+                </Badge>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center justify-between mt-3">
             <div className="flex items-center gap-1.5 text-xs">

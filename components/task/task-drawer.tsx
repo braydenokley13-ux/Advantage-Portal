@@ -3,12 +3,18 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Calendar,
+  CalendarPlus,
+  CheckCircle2,
   ClipboardList,
   Inbox,
   MessageSquare,
   Pencil,
   Send,
+  XCircle,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { addDays } from "date-fns";
 import {
   Dialog,
   DialogContent,
@@ -30,6 +36,7 @@ import { useStore } from "@/lib/store";
 import { useRole } from "@/lib/role-context";
 import { canEditTask, canReview, canSubmit } from "@/lib/permissions";
 import { STATUS_LABELS } from "@/lib/kanban-rules";
+import { STATUS_DEFINITIONS } from "@/lib/status";
 import { initials, cn } from "@/lib/utils";
 import { format, formatDistanceToNowStrict, isPast } from "date-fns";
 import type { Submission, Task } from "@/lib/types";
@@ -53,8 +60,12 @@ export function TaskDrawer({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
-  const { tasks, submissions, users } = useStore();
+  const { tasks, submissions, users, requestExtension, decideExtension } =
+    useStore();
   const { user } = useRole();
+  const [extOpen, setExtOpen] = useState(false);
+  const [extDate, setExtDate] = useState("");
+  const [extReason, setExtReason] = useState("");
 
   const task = useMemo(
     () => tasks.find((t) => t.id === taskId) ?? null,
@@ -174,13 +185,87 @@ export function TaskDrawer({
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="brief" className="mt-4 space-y-3">
-              <h4 className="text-xs uppercase tracking-wide text-muted-foreground font-medium">
-                Instructions
-              </h4>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                {task.instructions}
-              </p>
+            <TabsContent value="brief" className="mt-4 space-y-4">
+              <div className="rounded-lg border border-border bg-secondary/40 p-3 space-y-1">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
+                  What this status means
+                </p>
+                <p className="text-sm leading-snug">
+                  {STATUS_DEFINITIONS[task.status].description}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Next:</span>{" "}
+                  {STATUS_DEFINITIONS[task.status].nextAction[
+                    user.role === "admin" ? "leader" : user.role
+                  ]}
+                </p>
+              </div>
+
+              {(task.wordCountTarget ||
+                task.citationsRequired ||
+                task.extensionRequest) && (
+                <div className="grid grid-cols-2 gap-2">
+                  {task.wordCountTarget && (
+                    <div className="rounded-md border border-border bg-card p-2.5">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Word count target
+                      </p>
+                      <p className="text-sm font-medium mt-0.5">
+                        {task.wordCountTarget.toLocaleString()} words
+                      </p>
+                    </div>
+                  )}
+                  {task.citationsRequired && (
+                    <div className="rounded-md border border-border bg-card p-2.5">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Citations
+                      </p>
+                      <p className="text-sm font-medium mt-0.5">
+                        Required for sources
+                      </p>
+                    </div>
+                  )}
+                  {task.extensionRequest && (
+                    <div className="rounded-md border border-border bg-card p-2.5 col-span-2">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Extension request — {task.extensionRequest.status}
+                      </p>
+                      <p className="text-xs mt-0.5">
+                        New deadline:{" "}
+                        {format(
+                          new Date(task.extensionRequest.newDeadline),
+                          "MMM d, yyyy"
+                        )}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {task.extensionRequest.reason}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {extensionPanel({
+                task,
+                user,
+                extOpen,
+                setExtOpen,
+                extDate,
+                setExtDate,
+                extReason,
+                setExtReason,
+                requestExtension,
+                decideExtension,
+              })}
+
+              <div>
+                <h4 className="text-xs uppercase tracking-wide text-muted-foreground font-medium">
+                  Instructions
+                </h4>
+                <p className="text-sm leading-relaxed whitespace-pre-wrap mt-2">
+                  {task.instructions}
+                </p>
+              </div>
             </TabsContent>
 
             <TabsContent value="submit" className="mt-4 space-y-5">
@@ -242,5 +327,180 @@ export function TaskDrawer({
         onOpenChange={setEditing}
       />
     </Dialog>
+  );
+}
+
+/**
+ * Extension request UI: writers can ask for more time; leaders/admins can
+ * approve or deny. Kept inline in the drawer (rather than a separate dialog)
+ * so the request and decision live next to the task brief.
+ */
+function extensionPanel(args: {
+  task: Task;
+  user: { id: string; role: string };
+  extOpen: boolean;
+  setExtOpen: (v: boolean) => void;
+  extDate: string;
+  setExtDate: (v: string) => void;
+  extReason: string;
+  setExtReason: (v: string) => void;
+  requestExtension: (input: {
+    taskId: string;
+    requestedById: string;
+    newDeadline: string;
+    reason: string;
+  }) => unknown;
+  decideExtension: (input: {
+    taskId: string;
+    decidedById: string;
+    approve: boolean;
+  }) => void;
+}) {
+  const {
+    task,
+    user,
+    extOpen,
+    setExtOpen,
+    extDate,
+    setExtDate,
+    extReason,
+    setExtReason,
+    requestExtension,
+    decideExtension,
+  } = args;
+
+  const isWriter = user.role === "writer" && task.writerId === user.id;
+  const isApprover = user.role === "leader" || user.role === "admin";
+  const pending = task.extensionRequest?.status === "pending";
+  const decided =
+    task.extensionRequest &&
+    task.extensionRequest.status !== "pending"
+      ? task.extensionRequest
+      : null;
+
+  const minDate = format(addDays(new Date(task.deadline), 1), "yyyy-MM-dd");
+
+  if (decided) {
+    return (
+      <div className="rounded-lg border border-border bg-card p-3 text-xs">
+        <p>
+          <span className="font-medium">Extension {decided.status}.</span>{" "}
+          New deadline: {format(new Date(decided.newDeadline), "MMM d, yyyy")}.
+        </p>
+      </div>
+    );
+  }
+
+  if (pending && isApprover && task.extensionRequest) {
+    const req = task.extensionRequest;
+    return (
+      <div className="rounded-lg border border-amber-300/60 bg-amber-50/40 p-3 space-y-2">
+        <p className="text-xs font-medium">Extension requested</p>
+        <p className="text-xs text-muted-foreground">
+          New deadline: {format(new Date(req.newDeadline), "MMM d, yyyy")}
+        </p>
+        <p className="text-xs">{req.reason}</p>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              decideExtension({
+                taskId: task.id,
+                decidedById: user.id,
+                approve: true,
+              })
+            }
+          >
+            <CheckCircle2 className="h-3.5 w-3.5" /> Approve
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              decideExtension({
+                taskId: task.id,
+                decidedById: user.id,
+                approve: false,
+              })
+            }
+          >
+            <XCircle className="h-3.5 w-3.5" /> Deny
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (pending) {
+    return (
+      <div className="rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">
+        Extension requested. Waiting for a leader or admin to review.
+      </div>
+    );
+  }
+
+  if (!isWriter) return null;
+
+  if (!extOpen) {
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => setExtOpen(true)}
+      >
+        <CalendarPlus className="h-3.5 w-3.5" /> Request extension
+      </Button>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-3 space-y-2">
+      <p className="text-xs font-medium">Request more time</p>
+      <Input
+        type="date"
+        min={minDate}
+        value={extDate}
+        onChange={(e) => setExtDate(e.target.value)}
+      />
+      <Textarea
+        value={extReason}
+        onChange={(e) => setExtReason(e.target.value)}
+        placeholder="Tell your editor why you need more time. Be brief and honest."
+        className="min-h-[80px]"
+      />
+      <div className="flex justify-end gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            setExtOpen(false);
+            setExtDate("");
+            setExtReason("");
+          }}
+        >
+          Cancel
+        </Button>
+        <Button
+          variant="gradient"
+          size="sm"
+          disabled={!extDate || !extReason.trim()}
+          onClick={() => {
+            requestExtension({
+              taskId: task.id,
+              requestedById: user.id,
+              newDeadline: new Date(extDate).toISOString(),
+              reason: extReason.trim(),
+            });
+            setExtOpen(false);
+            setExtDate("");
+            setExtReason("");
+          }}
+        >
+          Send request
+        </Button>
+      </div>
+    </div>
   );
 }
