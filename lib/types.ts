@@ -98,7 +98,12 @@ export interface Comment {
   createdAt: string;
 }
 
-export type ConversationKind = "dm" | "group" | "all_team" | "issue";
+export type ConversationKind =
+  | "dm"
+  | "group"
+  | "all_team"
+  | "issue"
+  | "admins_only";
 
 export interface Conversation {
   id: string;

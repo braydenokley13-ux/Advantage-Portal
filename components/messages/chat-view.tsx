@@ -4,11 +4,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   CheckCheck,
+  Flag,
   Hash,
   Megaphone,
   Paperclip,
   Pin,
   Send,
+  Shield,
+  ShieldAlert,
   Users as UsersIcon,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -29,9 +32,11 @@ export function ChatView({
   onBack?: () => void;
 }) {
   const { user } = useRole();
-  const { conversations, messages, users, sendMessage } = useStore();
+  const { conversations, messages, users, sendMessage, pushNotification } =
+    useStore();
   const conversation = conversations.find((c) => c.id === conversationId);
   const [draft, setDraft] = useState("");
+  const [reportedIds, setReportedIds] = useState<Set<string>>(() => new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const thread = useMemo(
@@ -78,6 +83,25 @@ export function ChatView({
     setDraft("");
   }
 
+  function reportMessage(messageId: string, body: string) {
+    setReportedIds((prev) => {
+      const next = new Set(prev);
+      next.add(messageId);
+      return next;
+    });
+    // Notify all admins so they can review the flag. In a real backend this
+    // would create a moderation case; the in-memory mock fans out as in-app
+    // notifications.
+    for (const admin of users.filter((u) => u.role === "admin")) {
+      pushNotification({
+        userId: admin.id,
+        kind: "comment",
+        title: "Message reported",
+        body: body.slice(0, 100),
+      });
+    }
+  }
+
   return (
     <div className="flex flex-1 flex-col min-w-0">
       <header className="flex items-center justify-between px-5 py-3 border-b border-border">
@@ -113,7 +137,22 @@ export function ChatView({
             <Pin className="h-3 w-3 mr-1" /> Pinned announcements
           </Badge>
         )}
+        {conversation.kind === "admins_only" && (
+          <Badge variant="danger" className="hidden sm:inline-flex">
+            <Shield className="h-3 w-3 mr-1" /> Admins & leaders only
+          </Badge>
+        )}
       </header>
+
+      {conversation.kind !== "dm" && conversation.kind !== "admins_only" && (
+        <div className="border-b border-border bg-secondary/40 px-5 py-2.5 flex items-start gap-2">
+          <ShieldAlert className="h-3.5 w-3.5 mt-0.5 text-muted-foreground" />
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            Be kind. This chat is moderated. Anything that feels off — flag it
+            with the report button on a message.
+          </p>
+        </div>
+      )}
 
       <div
         ref={scrollRef}
@@ -201,11 +240,26 @@ export function ChatView({
                   >
                     {m.body}
                   </div>
-                  {isMe && (
+                  {isMe ? (
                     <span className="mt-0.5 text-[10px] text-muted-foreground inline-flex items-center gap-1">
                       <CheckCheck className="h-3 w-3 text-primary" />
                       Read
                     </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => reportMessage(m.id, m.body)}
+                      disabled={reportedIds.has(m.id)}
+                      className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground disabled:opacity-60 disabled:cursor-default"
+                      aria-label={
+                        reportedIds.has(m.id)
+                          ? "Already reported"
+                          : "Report this message"
+                      }
+                    >
+                      <Flag className="h-3 w-3" />
+                      {reportedIds.has(m.id) ? "Reported" : "Report"}
+                    </button>
                   )}
                 </div>
               </div>
@@ -270,6 +324,12 @@ function ConversationIcon({
     return (
       <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-gradient text-white shadow-soft">
         <Megaphone className="h-4 w-4" />
+      </div>
+    );
+  if (kind === "admins_only")
+    return (
+      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-red-100 text-red-700">
+        <Shield className="h-4 w-4" />
       </div>
     );
   if (kind === "issue")

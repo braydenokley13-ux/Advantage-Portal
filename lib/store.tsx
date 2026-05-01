@@ -22,6 +22,7 @@ import {
 import type {
   Comment,
   Conversation,
+  ExtensionRequest,
   Message,
   Notification,
   NotificationKind,
@@ -55,10 +56,24 @@ type StoreValue = {
     editorId?: string;
     deadline: string;
     color?: TaskColor;
+    wordCountTarget?: number;
+    citationsRequired?: boolean;
   }) => Task;
   updateTask: (
     taskId: string,
-    patch: Partial<Pick<Task, "title" | "instructions" | "writerId" | "editorId" | "deadline" | "color">>
+    patch: Partial<
+      Pick<
+        Task,
+        | "title"
+        | "instructions"
+        | "writerId"
+        | "editorId"
+        | "deadline"
+        | "color"
+        | "wordCountTarget"
+        | "citationsRequired"
+      >
+    >
   ) => void;
   updateUserRole: (userId: string, role: Role) => void;
   setUserActive: (userId: string, active: boolean) => void;
@@ -104,6 +119,17 @@ type StoreValue = {
   }) => void;
   runDeadlineScan: (input?: { now?: Date }) => DeadlineReminder[];
   resetDeadlineReminders: () => void;
+  requestExtension: (input: {
+    taskId: string;
+    requestedById: string;
+    newDeadline: string;
+    reason: string;
+  }) => ExtensionRequest;
+  decideExtension: (input: {
+    taskId: string;
+    decidedById: string;
+    approve: boolean;
+  }) => void;
 };
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -145,6 +171,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       status: "not_started",
       color: input.color ?? "green",
       createdAt: new Date().toISOString(),
+      wordCountTarget: input.wordCountTarget,
+      citationsRequired: input.citationsRequired,
     };
     setTasks((prev) => [t, ...prev]);
 
@@ -457,6 +485,74 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setIssuedReminderKeys(new Set());
   }, []);
 
+  const requestExtension = useCallback<StoreValue["requestExtension"]>(
+    (input) => {
+      const req: ExtensionRequest = {
+        id: nextId("ext"),
+        taskId: input.taskId,
+        requestedById: input.requestedById,
+        newDeadline: input.newDeadline,
+        reason: input.reason,
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      };
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === input.taskId ? { ...t, extensionRequest: req } : t
+        )
+      );
+      // Notify every leader/admin so an approver sees it. Per product
+      // direction, both leaders and admins can approve extensions.
+      for (const u of usersState.filter(
+        (x) => x.role === "leader" || x.role === "admin"
+      )) {
+        pushNotification({
+          userId: u.id,
+          kind: "task_assigned",
+          title: "Extension requested",
+          body: input.reason.slice(0, 120),
+        });
+      }
+      return req;
+    },
+    [usersState, pushNotification]
+  );
+
+  const decideExtension = useCallback<StoreValue["decideExtension"]>(
+    (input) => {
+      setTasks((prev) =>
+        prev.map((t) => {
+          if (t.id !== input.taskId || !t.extensionRequest) return t;
+          const decided: ExtensionRequest = {
+            ...t.extensionRequest,
+            status: input.approve ? "approved" : "denied",
+            decidedById: input.decidedById,
+            decidedAt: new Date().toISOString(),
+          };
+          // On approval, slide the task deadline forward.
+          return {
+            ...t,
+            deadline: input.approve
+              ? decided.newDeadline
+              : t.deadline,
+            extensionRequest: decided,
+          };
+        })
+      );
+      const task = tasks.find((t) => t.id === input.taskId);
+      if (task?.extensionRequest) {
+        pushNotification({
+          userId: task.extensionRequest.requestedById,
+          kind: "task_assigned",
+          title: input.approve
+            ? `Extension approved: ${task.title}`
+            : `Extension denied: ${task.title}`,
+        });
+      }
+    },
+    [tasks, pushNotification]
+  );
+
   const markAllRead = useCallback((userId: string) => {
     setNotifications((prev) =>
       prev.map((n) => (n.userId === userId ? { ...n, read: true } : n))
@@ -490,6 +586,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       pushNotification,
       runDeadlineScan,
       resetDeadlineReminders,
+      requestExtension,
+      decideExtension,
     }),
     [
       usersState,
@@ -517,6 +615,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       pushNotification,
       runDeadlineScan,
       resetDeadlineReminders,
+      requestExtension,
+      decideExtension,
     ]
   );
 

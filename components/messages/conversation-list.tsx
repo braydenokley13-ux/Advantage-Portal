@@ -1,6 +1,13 @@
 "use client";
 
-import { Hash, Megaphone, Pin, Plus, Users as UsersIcon } from "lucide-react";
+import {
+  Hash,
+  Megaphone,
+  Pin,
+  Plus,
+  Shield,
+  Users as UsersIcon,
+} from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +29,7 @@ const KIND_ICON: Partial<
   group: UsersIcon,
   issue: Hash,
   all_team: Megaphone,
+  admins_only: Shield,
 };
 
 export function ConversationList({
@@ -154,6 +162,14 @@ function ConversationAvatar({ conversation }: { conversation: Conversation }) {
     );
   }
 
+  if (conversation.kind === "admins_only") {
+    return (
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700">
+        <Shield className="h-4 w-4" />
+      </div>
+    );
+  }
+
   const Icon = KIND_ICON[conversation.kind] ?? UsersIcon;
   return (
     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-foreground">
@@ -164,7 +180,7 @@ function ConversationAvatar({ conversation }: { conversation: Conversation }) {
 
 type KindBadge = {
   label: string;
-  tone: "default" | "secondary" | "warning";
+  tone: "default" | "secondary" | "warning" | "danger";
 };
 
 function KindLabel({ kind }: { kind: ConversationKind }) {
@@ -173,11 +189,13 @@ function KindLabel({ kind }: { kind: ConversationKind }) {
     group: { label: "Group", tone: "secondary" },
     issue: { label: "Issue", tone: "default" },
     all_team: { label: "All-team", tone: "warning" },
+    admins_only: { label: "Admins", tone: "danger" },
   };
   const v = map[kind];
   return (
     <Badge variant={v.tone} className="h-4 px-1.5 text-[9px] uppercase">
       {kind === "all_team" && <Pin className="h-2.5 w-2.5 mr-0.5" />}
+      {kind === "admins_only" && <Shield className="h-2.5 w-2.5 mr-0.5" />}
       {v.label}
     </Badge>
   );

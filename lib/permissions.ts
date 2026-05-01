@@ -30,6 +30,7 @@ export function canComment(args: { task: Task; user: User }): boolean {
 /** Creating a new conversation. */
 export function canCreateConversation(role: Role, kind: Conversation["kind"]) {
   if (kind === "all_team") return false; // single channel, not user-creatable
+  if (kind === "admins_only") return role === "admin";
   if (kind === "dm") return true;
   // group + issue: only leaders/admins
   return role === "leader" || role === "admin";
@@ -42,6 +43,9 @@ export function canPostInConversation(args: {
 }): boolean {
   if (!args.conversation.memberIds.includes(args.user.id)) return false;
   if (args.conversation.kind === "all_team") {
+    return args.user.role === "leader" || args.user.role === "admin";
+  }
+  if (args.conversation.kind === "admins_only") {
     return args.user.role === "leader" || args.user.role === "admin";
   }
   return true;

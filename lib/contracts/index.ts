@@ -45,6 +45,7 @@ export const ConversationKindSchema = z.enum([
   "group",
   "all_team",
   "issue",
+  "admins_only",
 ]);
 export type ConversationKindZ = z.infer<typeof ConversationKindSchema>;
 
@@ -93,6 +94,19 @@ export type UserUpdateInputZ = z.infer<typeof UserUpdateInput>;
 // Task
 // ────────────────────────────────────────────────────────────────────────────
 
+export const ExtensionRequestSchema = z.object({
+  id: z.string(),
+  taskId: z.string(),
+  requestedById: z.string(),
+  newDeadline: isoDate,
+  reason: z.string(),
+  status: z.enum(["pending", "approved", "denied"]),
+  decidedById: z.string().optional(),
+  decidedAt: isoDate.optional(),
+  createdAt: isoDate,
+});
+export type ExtensionRequestZ = z.infer<typeof ExtensionRequestSchema>;
+
 export const TaskSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -104,6 +118,9 @@ export const TaskSchema = z.object({
   color: TaskColorSchema,
   currentSubmissionId: z.string().optional(),
   createdAt: isoDate,
+  wordCountTarget: z.number().int().positive().optional(),
+  citationsRequired: z.boolean().optional(),
+  extensionRequest: ExtensionRequestSchema.optional(),
 });
 export type TaskZ = z.infer<typeof TaskSchema>;
 

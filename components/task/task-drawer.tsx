@@ -3,12 +3,18 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Calendar,
+  CalendarPlus,
+  CheckCircle2,
   ClipboardList,
   Inbox,
   MessageSquare,
   Pencil,
   Send,
+  XCircle,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { addDays } from "date-fns";
 import {
   Dialog,
   DialogContent,
@@ -54,8 +60,12 @@ export function TaskDrawer({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
-  const { tasks, submissions, users } = useStore();
+  const { tasks, submissions, users, requestExtension, decideExtension } =
+    useStore();
   const { user } = useRole();
+  const [extOpen, setExtOpen] = useState(false);
+  const [extDate, setExtDate] = useState("");
+  const [extReason, setExtReason] = useState("");
 
   const task = useMemo(
     () => tasks.find((t) => t.id === taskId) ?? null,
@@ -235,6 +245,19 @@ export function TaskDrawer({
                 </div>
               )}
 
+              {extensionPanel({
+                task,
+                user,
+                extOpen,
+                setExtOpen,
+                extDate,
+                setExtDate,
+                extReason,
+                setExtReason,
+                requestExtension,
+                decideExtension,
+              })}
+
               <div>
                 <h4 className="text-xs uppercase tracking-wide text-muted-foreground font-medium">
                   Instructions
@@ -304,5 +327,180 @@ export function TaskDrawer({
         onOpenChange={setEditing}
       />
     </Dialog>
+  );
+}
+
+/**
+ * Extension request UI: writers can ask for more time; leaders/admins can
+ * approve or deny. Kept inline in the drawer (rather than a separate dialog)
+ * so the request and decision live next to the task brief.
+ */
+function extensionPanel(args: {
+  task: Task;
+  user: { id: string; role: string };
+  extOpen: boolean;
+  setExtOpen: (v: boolean) => void;
+  extDate: string;
+  setExtDate: (v: string) => void;
+  extReason: string;
+  setExtReason: (v: string) => void;
+  requestExtension: (input: {
+    taskId: string;
+    requestedById: string;
+    newDeadline: string;
+    reason: string;
+  }) => unknown;
+  decideExtension: (input: {
+    taskId: string;
+    decidedById: string;
+    approve: boolean;
+  }) => void;
+}) {
+  const {
+    task,
+    user,
+    extOpen,
+    setExtOpen,
+    extDate,
+    setExtDate,
+    extReason,
+    setExtReason,
+    requestExtension,
+    decideExtension,
+  } = args;
+
+  const isWriter = user.role === "writer" && task.writerId === user.id;
+  const isApprover = user.role === "leader" || user.role === "admin";
+  const pending = task.extensionRequest?.status === "pending";
+  const decided =
+    task.extensionRequest &&
+    task.extensionRequest.status !== "pending"
+      ? task.extensionRequest
+      : null;
+
+  const minDate = format(addDays(new Date(task.deadline), 1), "yyyy-MM-dd");
+
+  if (decided) {
+    return (
+      <div className="rounded-lg border border-border bg-card p-3 text-xs">
+        <p>
+          <span className="font-medium">Extension {decided.status}.</span>{" "}
+          New deadline: {format(new Date(decided.newDeadline), "MMM d, yyyy")}.
+        </p>
+      </div>
+    );
+  }
+
+  if (pending && isApprover && task.extensionRequest) {
+    const req = task.extensionRequest;
+    return (
+      <div className="rounded-lg border border-amber-300/60 bg-amber-50/40 p-3 space-y-2">
+        <p className="text-xs font-medium">Extension requested</p>
+        <p className="text-xs text-muted-foreground">
+          New deadline: {format(new Date(req.newDeadline), "MMM d, yyyy")}
+        </p>
+        <p className="text-xs">{req.reason}</p>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              decideExtension({
+                taskId: task.id,
+                decidedById: user.id,
+                approve: true,
+              })
+            }
+          >
+            <CheckCircle2 className="h-3.5 w-3.5" /> Approve
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              decideExtension({
+                taskId: task.id,
+                decidedById: user.id,
+                approve: false,
+              })
+            }
+          >
+            <XCircle className="h-3.5 w-3.5" /> Deny
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (pending) {
+    return (
+      <div className="rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">
+        Extension requested. Waiting for a leader or admin to review.
+      </div>
+    );
+  }
+
+  if (!isWriter) return null;
+
+  if (!extOpen) {
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => setExtOpen(true)}
+      >
+        <CalendarPlus className="h-3.5 w-3.5" /> Request extension
+      </Button>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-3 space-y-2">
+      <p className="text-xs font-medium">Request more time</p>
+      <Input
+        type="date"
+        min={minDate}
+        value={extDate}
+        onChange={(e) => setExtDate(e.target.value)}
+      />
+      <Textarea
+        value={extReason}
+        onChange={(e) => setExtReason(e.target.value)}
+        placeholder="Tell your editor why you need more time. Be brief and honest."
+        className="min-h-[80px]"
+      />
+      <div className="flex justify-end gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            setExtOpen(false);
+            setExtDate("");
+            setExtReason("");
+          }}
+        >
+          Cancel
+        </Button>
+        <Button
+          variant="gradient"
+          size="sm"
+          disabled={!extDate || !extReason.trim()}
+          onClick={() => {
+            requestExtension({
+              taskId: task.id,
+              requestedById: user.id,
+              newDeadline: new Date(extDate).toISOString(),
+              reason: extReason.trim(),
+            });
+            setExtOpen(false);
+            setExtDate("");
+            setExtReason("");
+          }}
+        >
+          Send request
+        </Button>
+      </div>
+    </div>
   );
 }

@@ -35,6 +35,8 @@ export const tasks: Task[] = [
     status: "in_progress",
     color: "amber",
     createdAt: daysAgo(3),
+    wordCountTarget: 1800,
+    citationsRequired: true,
   },
   {
     id: "t2",
@@ -94,6 +96,7 @@ export const tasks: Task[] = [
     status: "not_started",
     color: "green",
     createdAt: daysAgo(0),
+    wordCountTarget: 600,
   },
   {
     id: "t7",
@@ -150,6 +153,15 @@ export const conversations: Conversation[] = [
     title: "All Team",
     memberIds: users.map((u) => u.id),
     lastMessageAt: daysAgo(0),
+  },
+  {
+    id: "c0",
+    kind: "admins_only",
+    title: "Admins & Leaders",
+    memberIds: users
+      .filter((u) => u.role === "admin" || u.role === "leader")
+      .map((u) => u.id),
+    lastMessageAt: daysAgo(1),
   },
   {
     id: "c2",
@@ -211,6 +223,13 @@ export const messages: Message[] = [
     body: "Welcome to the new writers joining this issue! Open the brief, ask questions, and don't be afraid to request an extension if you need one.",
     createdAt: daysAgo(3),
     pinnedAt: daysAgo(3),
+  },
+  {
+    id: "m6",
+    conversationId: "c0",
+    authorId: "u7",
+    body: "Admins/leaders only — coordinate moderation and approvals here so writers don't see ops chatter.",
+    createdAt: daysAgo(1),
   },
 ];
 

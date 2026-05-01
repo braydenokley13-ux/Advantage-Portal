@@ -54,6 +54,8 @@ export function TaskFormDialog({
   const [editorId, setEditorId] = useState<string>("");
   const [deadline, setDeadline] = useState<string>("");
   const [color, setColor] = useState<TaskColor>("green");
+  const [wordCountTarget, setWordCountTarget] = useState<string>("");
+  const [citationsRequired, setCitationsRequired] = useState<boolean>(false);
 
   useEffect(() => {
     if (!open) return;
@@ -64,6 +66,10 @@ export function TaskFormDialog({
       setEditorId(task.editorId ?? "");
       setDeadline(format(new Date(task.deadline), "yyyy-MM-dd"));
       setColor(task.color);
+      setWordCountTarget(
+        task.wordCountTarget ? String(task.wordCountTarget) : ""
+      );
+      setCitationsRequired(task.citationsRequired ?? false);
     } else {
       setTitle("");
       setInstructions("");
@@ -73,6 +79,8 @@ export function TaskFormDialog({
       inAWeek.setDate(inAWeek.getDate() + 7);
       setDeadline(format(inAWeek, "yyyy-MM-dd"));
       setColor("green");
+      setWordCountTarget("");
+      setCitationsRequired(false);
     }
   }, [open, mode, task, writers]);
 
@@ -85,6 +93,9 @@ export function TaskFormDialog({
   function submit() {
     if (!valid || !allowed) return;
     const iso = new Date(`${deadline}T17:00:00`).toISOString();
+    const wc = wordCountTarget.trim()
+      ? Math.max(1, Math.floor(Number(wordCountTarget)))
+      : undefined;
     if (mode === "create") {
       createTask({
         title: title.trim(),
@@ -93,6 +104,8 @@ export function TaskFormDialog({
         editorId: editorId || undefined,
         deadline: iso,
         color,
+        wordCountTarget: wc,
+        citationsRequired: citationsRequired || undefined,
       });
     } else if (task) {
       updateTask(task.id, {
@@ -102,6 +115,8 @@ export function TaskFormDialog({
         editorId: editorId || undefined,
         deadline: iso,
         color,
+        wordCountTarget: wc,
+        citationsRequired: citationsRequired || undefined,
       });
     }
     onOpenChange(false);
@@ -203,7 +218,42 @@ export function TaskFormDialog({
                 ))}
               </Select>
             </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="task-words">
+                Word count target{" "}
+                <span className="text-muted-foreground">(optional)</span>
+              </Label>
+              <Input
+                id="task-words"
+                type="number"
+                min={1}
+                step={50}
+                value={wordCountTarget}
+                onChange={(e) => setWordCountTarget(e.target.value)}
+                placeholder="e.g. 1500"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Citations</Label>
+              <label className="flex items-center gap-2 text-xs text-muted-foreground select-none rounded-md border border-border bg-card px-3 py-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="h-3.5 w-3.5 accent-foreground"
+                  checked={citationsRequired}
+                  onChange={(e) => setCitationsRequired(e.target.checked)}
+                />
+                Require citations (sourcing-heavy piece)
+              </label>
+            </div>
           </div>
+
+          <p className="text-[11px] text-muted-foreground border-t border-border pt-3">
+            Citations are an editor's call — flagging this just shows a
+            reminder on the task and lets the editor weigh sourcing during
+            review. It does not block submission.
+          </p>
         </div>
 
         <DialogFooter>
