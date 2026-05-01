@@ -8,3 +8,4 @@ dist
 *.log
 .vercel
 next-env.d.ts
+tsconfig.tsbuildinfo

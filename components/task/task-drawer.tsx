@@ -197,7 +197,7 @@ export function TaskDrawer({
                 />
                 {selected && (
                   <div className="pt-2">
-                    <SubmissionViewer submission={selected} />
+                    <SubmissionViewer submission={selected} task={task} />
                   </div>
                 )}
               </div>
@@ -205,7 +205,7 @@ export function TaskDrawer({
 
             <TabsContent value="review" className="mt-4 space-y-5">
               {selected ? (
-                <SubmissionViewer submission={selected} />
+                <SubmissionViewer submission={selected} task={task} />
               ) : (
                 <p className="text-sm text-muted-foreground">
                   Nothing to review yet.

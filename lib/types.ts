@@ -37,12 +37,22 @@ export interface Task {
   createdAt: string;
 }
 
+export interface SubmissionFileMeta {
+  filename: string;
+  mimeType: string;
+  /** Bytes. */
+  sizeBytes: number;
+}
+
 export interface Submission {
   id: string;
   taskId: string;
   type: SubmissionType;
   version: number;
+  /** For inline: markdown body. For file: filename. For google_doc: URL. */
   content: string;
+  /** Populated for `file` submissions. */
+  file?: SubmissionFileMeta;
   createdAt: string;
   isCurrent: boolean;
 }
@@ -62,6 +72,8 @@ export interface Comment {
   authorId: string;
   body: string;
   inline: boolean;
+  /** 1-indexed line number when `inline` is true; undefined for general comments. */
+  lineNumber?: number;
   resolved: boolean;
   createdAt: string;
 }

@@ -229,33 +229,41 @@ export default function DashboardPage() {
               <CardTitle>Recent messages</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <ul className="divide-y divide-border">
-                {recentMessages.map((m) => {
-                  const author = users.find((u) => u.id === m.authorId);
-                  return (
-                    <li key={m.id} className="px-4 py-3 flex gap-3">
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback className="text-[10px]">
-                          {initials(author?.name ?? "??")}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium truncate">
-                            {author?.name}
+              {recentMessages.length === 0 ? (
+                <EmptyState
+                  icon={Inbox}
+                  title="No messages yet"
+                  description="DMs and team chatter will show up here."
+                />
+              ) : (
+                <ul className="divide-y divide-border">
+                  {recentMessages.map((m) => {
+                    const author = users.find((u) => u.id === m.authorId);
+                    return (
+                      <li key={m.id} className="px-4 py-3 flex gap-3">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback className="text-[10px]">
+                            {initials(author?.name ?? "??")}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium truncate">
+                              {author?.name}
+                            </p>
+                            <span className="text-[10px] text-muted-foreground">
+                              {format(new Date(m.createdAt), "MMM d")}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {m.body}
                           </p>
-                          <span className="text-[10px] text-muted-foreground">
-                            {format(new Date(m.createdAt), "MMM d")}
-                          </span>
                         </div>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {m.body}
-                        </p>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </CardContent>
           </Card>
         </div>

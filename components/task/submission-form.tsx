@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useStore } from "@/lib/store";
 import { useRole } from "@/lib/role-context";
 import { canSubmit } from "@/lib/permissions";
-import type { SubmissionType, Task } from "@/lib/types";
+import type { SubmissionFileMeta, SubmissionType, Task } from "@/lib/types";
 
 export function SubmissionForm({
   task,
@@ -27,6 +27,7 @@ export function SubmissionForm({
   const [inline, setInline] = useState("");
   const [docUrl, setDocUrl] = useState("");
   const [fileName, setFileName] = useState("");
+  const [fileMeta, setFileMeta] = useState<SubmissionFileMeta | null>(null);
 
   if (!allowed) {
     return (
@@ -65,10 +66,12 @@ export function SubmissionForm({
       authorId: user.id,
       type: tab,
       content,
+      file: tab === "file" && fileMeta ? fileMeta : undefined,
     });
     setInline("");
     setDocUrl("");
     setFileName("");
+    setFileMeta(null);
     onSubmitted?.();
   }
 
@@ -126,7 +129,14 @@ export function SubmissionForm({
               className="sr-only"
               onChange={(e) => {
                 const f = e.target.files?.[0];
-                if (f) setFileName(f.name);
+                if (f) {
+                  setFileName(f.name);
+                  setFileMeta({
+                    filename: f.name,
+                    mimeType: f.type || "application/octet-stream",
+                    sizeBytes: f.size,
+                  });
+                }
               }}
             />
           </label>

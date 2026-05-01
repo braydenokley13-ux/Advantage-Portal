@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/page-header";
 import { NotificationItem } from "@/components/notifications/notification-item";
+import { DeadlineScanControl } from "@/components/notifications/deadline-scan-control";
 import { useStore } from "@/lib/store";
 import { useRole } from "@/lib/role-context";
 import { cn } from "@/lib/utils";
@@ -72,6 +73,8 @@ export default function NotificationsPage() {
           </div>
         }
       />
+
+      <DeadlineScanControl />
 
       <div className="flex flex-wrap gap-1.5">
         {TABS.map((t) => {

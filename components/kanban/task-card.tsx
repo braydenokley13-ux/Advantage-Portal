@@ -42,8 +42,8 @@ export function TaskCard({
       animate={{ opacity: isDragging ? 0.5 : 1, y: 0 }}
       transition={{ duration: 0.15 }}
       draggable={draggable}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
+      onDragStart={onDragStart as never}
+      onDragEnd={onDragEnd as never}
       onClick={onClick}
       className={cn(
         "group rounded-lg bg-card border border-border border-l-4 shadow-soft",

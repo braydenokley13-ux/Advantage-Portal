@@ -96,7 +96,8 @@ export function UserList({ canManage }: { canManage: boolean }) {
       </Card>
 
       <Card className="overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[480px]">
           <thead className="bg-secondary/40 text-[11px] uppercase tracking-wide text-muted-foreground">
             <tr>
               <th className="text-left px-4 py-2 font-medium">Member</th>
@@ -225,6 +226,7 @@ export function UserList({ canManage }: { canManage: boolean }) {
             )}
           </tbody>
         </table>
+        </div>
       </Card>
 
       <ProfileDialog
