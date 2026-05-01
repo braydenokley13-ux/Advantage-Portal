@@ -146,16 +146,31 @@ admins can `clear` (allow) or `hold` (block until resolved) the flag.
   desks", leader "Issue readiness" + "Sensitive escalations", admin
   "Sensitive escalations" overview.
 
+## Phase 3 update — newsroom persistence (this update)
+
+Done in `docs/newsroom-persistence-supabase.md`:
+
+- Migration `0002_newsroom_workflow.sql` adds `sections`, `issues`,
+  `issue_slots`, `pitches`, `editorial_checklists`, `sensitive_flags`,
+  plus optional task columns (`section_id`, `pitch_id`, `issue_id`,
+  `copy_editor_id`, `fact_checker_id`, `slug`, `assignment_brief jsonb`,
+  `word_count_actual`).
+- Migration `0003_newsroom_rls.sql` adds RLS policies that match the
+  role responsibilities above (writer reads/inserts own pitches; editor
+  triages; leader/admin owns issue planning + sensitive decisions).
+- Seed file `seed_newsroom.sql` mirrors `lib/mock-data.ts`.
+- `lib/api/client.ts`, `mock-adapter.tsx`, `supabase-adapter.ts`, and
+  `lib/hooks/index.ts` gained newsroom methods/hooks. The newsroom UI is
+  unchanged; mock mode keeps working untouched.
+
 ## Future work
 
-- Persist all new entities through Supabase. Schema sketch:
-  `sections`, `issues`, `issue_slots`, `pitches`, `editorial_checklists`,
-  `sensitive_flags`, plus `tasks` columns: `section_id`, `pitch_id`,
-  `issue_id`, `copy_editor_id`, `fact_checker_id`, `slug`,
-  `assignment_brief` (jsonb), `sensitive_id`.
-- Real Supabase Auth (still pending from earlier phases).
-- Row-Level Security on the new tables — writers see their pitches and
-  assigned stories; editors see their queue; leaders/admins see all.
+- Migrate the newsroom pages (`/pitches`, `/issues`,
+  `/admin/escalations`, the story drawer's checklist + sensitive panels)
+  off `useStore()` and onto the new hooks so Supabase mode persists
+  reads as well as writes.
+- Real Supabase Auth (still pending from earlier phases). Required for
+  RLS to bind to a real `auth.uid()`.
 - Realtime subscription for the issue board and pitch queue.
 - Per-stage SLAs and escalation-on-delay.
 - Photo/visual asset model and rights tracking.

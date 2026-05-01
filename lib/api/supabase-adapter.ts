@@ -18,17 +18,25 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ApiError, type ApiClient } from "./client";
 import type {
+  AssignmentBriefZ,
   CommentZ,
   ConversationZ,
+  EditorialChecklistZ,
+  IssueSlotZ,
+  IssueZ,
   MessageZ,
   ModerationReportZ,
   NotificationZ,
+  PitchZ,
   ReviewZ,
+  SectionZ,
+  SensitiveFlagZ,
   SubmissionZ,
   TaskZ,
   UserZ,
 } from "@/lib/contracts";
-import type { ExtensionRequest } from "@/lib/types";
+import type { ChecklistItem, ExtensionRequest } from "@/lib/types";
+import { defaultChecklistItems } from "@/lib/mock-data";
 
 // ── row → contract translators ───────────────────────────────────────────
 type UserRow = {
@@ -64,7 +72,19 @@ type TaskRow = {
   word_count_target: number | null;
   citations_required: boolean;
   created_at: string;
+  // newsroom (additive — present only after migration 0002)
+  section_id?: string | null;
+  pitch_id?: string | null;
+  issue_id?: string | null;
+  copy_editor_id?: string | null;
+  fact_checker_id?: string | null;
+  slug?: string | null;
+  assignment_brief?: AssignmentBriefZ | Record<string, never> | null;
+  word_count_actual?: number | null;
 };
+
+const TASK_COLUMNS =
+  "id, title, instructions, writer_id, editor_id, deadline, status, color, current_submission_id, word_count_target, citations_required, created_at, section_id, pitch_id, issue_id, copy_editor_id, fact_checker_id, slug, assignment_brief, word_count_actual";
 
 type ExtensionRow = {
   id: string;
@@ -92,7 +112,17 @@ function rowToExtension(r: ExtensionRow): ExtensionRequest {
   };
 }
 
-function rowToTask(r: TaskRow, ext?: ExtensionRow | null): TaskZ {
+function rowToTask(
+  r: TaskRow,
+  ext?: ExtensionRow | null,
+  sensitive?: SensitiveFlagRow | null
+): TaskZ {
+  const briefRaw = r.assignment_brief ?? null;
+  const brief =
+    briefRaw && typeof briefRaw === "object" && Object.keys(briefRaw).length > 0
+      ? (briefRaw as AssignmentBriefZ)
+      : undefined;
+
   return {
     id: r.id,
     title: r.title,
@@ -107,6 +137,15 @@ function rowToTask(r: TaskRow, ext?: ExtensionRow | null): TaskZ {
     wordCountTarget: r.word_count_target ?? undefined,
     citationsRequired: r.citations_required || undefined,
     extensionRequest: ext ? rowToExtension(ext) : undefined,
+    sectionId: r.section_id ?? undefined,
+    pitchId: r.pitch_id ?? undefined,
+    issueId: r.issue_id ?? undefined,
+    copyEditorId: r.copy_editor_id ?? undefined,
+    factCheckerId: r.fact_checker_id ?? undefined,
+    slug: r.slug ?? undefined,
+    brief,
+    wordCountActual: r.word_count_actual ?? undefined,
+    sensitive: sensitive ? rowToSensitive(sensitive) : undefined,
   };
 }
 
@@ -273,6 +312,151 @@ function rowToReport(r: ModerationRow): ModerationReportZ {
   };
 }
 
+// ── newsroom row types ────────────────────────────────────────────────────
+type SectionRow = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  accent: string;
+};
+
+function rowToSection(r: SectionRow): SectionZ {
+  return {
+    id: r.id,
+    slug: r.slug,
+    name: r.name,
+    description: r.description,
+    accent: r.accent,
+  };
+}
+
+type PitchRow = {
+  id: string;
+  proposed_headline: string;
+  section_id: string;
+  angle: string;
+  why_now: string;
+  proposed_sources: string[] | null;
+  expected_word_count: number | null;
+  deadline_pref: string | null;
+  writer_note: string | null;
+  writer_id: string;
+  status: PitchZ["status"];
+  editor_note: string | null;
+  decided_by_id: string | null;
+  decided_at: string | null;
+  task_id: string | null;
+  created_at: string;
+};
+
+function rowToPitch(r: PitchRow): PitchZ {
+  return {
+    id: r.id,
+    proposedHeadline: r.proposed_headline,
+    sectionId: r.section_id,
+    angle: r.angle,
+    whyNow: r.why_now,
+    proposedSources: r.proposed_sources ?? [],
+    expectedWordCount: r.expected_word_count ?? undefined,
+    deadlinePref: r.deadline_pref ?? undefined,
+    writerNote: r.writer_note ?? undefined,
+    writerId: r.writer_id,
+    status: r.status,
+    editorNote: r.editor_note ?? undefined,
+    decidedById: r.decided_by_id ?? undefined,
+    decidedAt: r.decided_at ?? undefined,
+    taskId: r.task_id ?? undefined,
+    createdAt: r.created_at,
+  };
+}
+
+type IssueRow = {
+  id: string;
+  number: number;
+  name: string;
+  publish_date: string;
+  status: IssueZ["status"];
+  notes: string | null;
+};
+
+function rowToIssue(r: IssueRow): IssueZ {
+  return {
+    id: r.id,
+    number: r.number,
+    name: r.name,
+    publishDate: r.publish_date,
+    status: r.status,
+    notes: r.notes ?? undefined,
+  };
+}
+
+type IssueSlotRow = {
+  id: string;
+  issue_id: string;
+  task_id: string;
+  priority: IssueSlotZ["priority"];
+};
+
+function rowToIssueSlot(r: IssueSlotRow): IssueSlotZ {
+  return {
+    id: r.id,
+    issueId: r.issue_id,
+    taskId: r.task_id,
+    priority: r.priority,
+  };
+}
+
+type EditorialChecklistRow = {
+  task_id: string;
+  items: ChecklistItem[] | null;
+  updated_at: string;
+};
+
+function rowToChecklist(r: EditorialChecklistRow): EditorialChecklistZ {
+  return {
+    taskId: r.task_id,
+    items: (r.items ?? []) as ChecklistItem[],
+    updatedAt: r.updated_at,
+  };
+}
+
+type SensitiveFlagRow = {
+  id: string;
+  task_id: string;
+  reason: SensitiveFlagZ["reason"];
+  notes: string;
+  status: SensitiveFlagZ["status"];
+  raised_by_id: string;
+  raised_at: string;
+  decided_by_id: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+};
+
+function rowToSensitive(r: SensitiveFlagRow): SensitiveFlagZ {
+  return {
+    id: r.id,
+    taskId: r.task_id,
+    reason: r.reason,
+    notes: r.notes,
+    status: r.status,
+    raisedById: r.raised_by_id,
+    raisedAt: r.raised_at,
+    decidedById: r.decided_by_id ?? undefined,
+    decidedAt: r.decided_at ?? undefined,
+    decisionNote: r.decision_note ?? undefined,
+  };
+}
+
+const SENSITIVE_COLUMNS =
+  "id, task_id, reason, notes, status, raised_by_id, raised_at, decided_by_id, decided_at, decision_note";
+
+const PITCH_COLUMNS =
+  "id, proposed_headline, section_id, angle, why_now, proposed_sources, expected_word_count, deadline_pref, writer_note, writer_id, status, editor_note, decided_by_id, decided_at, task_id, created_at";
+
+const ISSUE_COLUMNS = "id, number, name, publish_date, status, notes";
+
 // ── adapter ───────────────────────────────────────────────────────────────
 export class SupabaseApiClient implements ApiClient {
   constructor(
@@ -371,31 +555,61 @@ export class SupabaseApiClient implements ApiClient {
     return out;
   }
 
+  /** Load the most-recent flag per task. Most-recent open or holding wins;
+   *  if none, the most recent cleared flag still surfaces so the UI shows
+   *  the historical decision state. */
+  private async loadLatestSensitiveFlags(
+    taskIds: string[]
+  ): Promise<Map<string, SensitiveFlagRow>> {
+    if (taskIds.length === 0) return new Map();
+    const { data, error } = await this.sb
+      .from("sensitive_flags")
+      .select(SENSITIVE_COLUMNS)
+      .in("task_id", taskIds)
+      .order("raised_at", { ascending: false });
+    if (error) this.err("loadLatestSensitiveFlags", error);
+    const out = new Map<string, SensitiveFlagRow>();
+    for (const row of (data ?? []) as SensitiveFlagRow[]) {
+      // keep the first (most recent) per task
+      if (!out.has(row.task_id)) out.set(row.task_id, row);
+    }
+    return out;
+  }
+
   async listTasks(): Promise<TaskZ[]> {
     const { data, error } = await this.sb
       .from("tasks")
-      .select(
-        "id, title, instructions, writer_id, editor_id, deadline, status, color, current_submission_id, word_count_target, citations_required, created_at"
-      )
+      .select(TASK_COLUMNS)
       .order("deadline");
     if (error) this.err("listTasks", error);
     const rows = (data ?? []) as TaskRow[];
-    const exts = await this.loadPendingExtensions(rows.map((r) => r.id));
-    return rows.map((r) => rowToTask(r, exts.get(r.id) ?? null));
+    const ids = rows.map((r) => r.id);
+    const [exts, flags] = await Promise.all([
+      this.loadPendingExtensions(ids),
+      this.loadLatestSensitiveFlags(ids),
+    ]);
+    return rows.map((r) =>
+      rowToTask(r, exts.get(r.id) ?? null, flags.get(r.id) ?? null)
+    );
   }
 
   async getTask(id: string): Promise<TaskZ | null> {
     const { data, error } = await this.sb
       .from("tasks")
-      .select(
-        "id, title, instructions, writer_id, editor_id, deadline, status, color, current_submission_id, word_count_target, citations_required, created_at"
-      )
+      .select(TASK_COLUMNS)
       .eq("id", id)
       .maybeSingle();
     if (error) this.err("getTask", error);
     if (!data) return null;
-    const exts = await this.loadPendingExtensions([id]);
-    return rowToTask(data as TaskRow, exts.get(id) ?? null);
+    const [exts, flags] = await Promise.all([
+      this.loadPendingExtensions([id]),
+      this.loadLatestSensitiveFlags([id]),
+    ]);
+    return rowToTask(
+      data as TaskRow,
+      exts.get(id) ?? null,
+      flags.get(id) ?? null
+    );
   }
 
   async createTask(input: {
@@ -416,9 +630,7 @@ export class SupabaseApiClient implements ApiClient {
         deadline: input.deadline,
         color: input.color ?? "green",
       })
-      .select(
-        "id, title, instructions, writer_id, editor_id, deadline, status, color, current_submission_id, word_count_target, citations_required, created_at"
-      )
+      .select(TASK_COLUMNS)
       .single();
     if (error) this.err("createTask", error);
     return rowToTask(data as TaskRow);
@@ -447,9 +659,7 @@ export class SupabaseApiClient implements ApiClient {
       .from("tasks")
       .update(update)
       .eq("id", id)
-      .select(
-        "id, title, instructions, writer_id, editor_id, deadline, status, color, current_submission_id, word_count_target, citations_required, created_at"
-      )
+      .select(TASK_COLUMNS)
       .single();
     if (error) this.err("updateTask", error);
     return rowToTask(data as TaskRow);
@@ -460,9 +670,7 @@ export class SupabaseApiClient implements ApiClient {
       .from("tasks")
       .update({ status })
       .eq("id", id)
-      .select(
-        "id, title, instructions, writer_id, editor_id, deadline, status, color, current_submission_id, word_count_target, citations_required, created_at"
-      )
+      .select(TASK_COLUMNS)
       .single();
     if (error) this.err("setTaskStatus", error);
     return rowToTask(data as TaskRow);
@@ -839,5 +1047,505 @@ export class SupabaseApiClient implements ApiClient {
       .single();
     if (error) this.err("hideMessage", error);
     return rowToMessage(data as MessageRow);
+  }
+
+  // ── Newsroom: sections ─────────────────────────────────────────────────
+  async listSections(): Promise<SectionZ[]> {
+    const { data, error } = await this.sb
+      .from("sections")
+      .select("id, slug, name, description, accent")
+      .order("name");
+    if (error) this.err("listSections", error);
+    return (data ?? []).map((r) => rowToSection(r as SectionRow));
+  }
+
+  // ── Newsroom: pitches ──────────────────────────────────────────────────
+  async listPitches(filter?: {
+    writerId?: string;
+    status?: PitchZ["status"];
+  }): Promise<PitchZ[]> {
+    let q = this.sb.from("pitches").select(PITCH_COLUMNS);
+    if (filter?.writerId) q = q.eq("writer_id", filter.writerId);
+    if (filter?.status) q = q.eq("status", filter.status);
+    const { data, error } = await q.order("created_at", { ascending: false });
+    if (error) this.err("listPitches", error);
+    return (data ?? []).map((r) => rowToPitch(r as PitchRow));
+  }
+
+  async createPitch(input: {
+    proposedHeadline: string;
+    sectionId: string;
+    angle: string;
+    whyNow: string;
+    proposedSources: string[];
+    expectedWordCount?: number;
+    deadlinePref?: string;
+    writerNote?: string;
+    writerId: string;
+  }): Promise<PitchZ> {
+    const { data, error } = await this.sb
+      .from("pitches")
+      .insert({
+        proposed_headline: input.proposedHeadline,
+        section_id: input.sectionId,
+        angle: input.angle,
+        why_now: input.whyNow,
+        proposed_sources: input.proposedSources ?? [],
+        expected_word_count: input.expectedWordCount ?? null,
+        deadline_pref: input.deadlinePref ?? null,
+        writer_note: input.writerNote ?? null,
+        writer_id: input.writerId,
+        status: "submitted",
+      })
+      .select(PITCH_COLUMNS)
+      .single();
+    if (error) this.err("createPitch", error);
+    return rowToPitch(data as PitchRow);
+  }
+
+  async decidePitch(input: {
+    pitchId: string;
+    decidedById: string;
+    accept: boolean;
+    note?: string;
+  }): Promise<PitchZ> {
+    const { data, error } = await this.sb
+      .from("pitches")
+      .update({
+        status: input.accept ? "accepted" : "declined",
+        editor_note: input.note ?? null,
+        decided_by_id: input.decidedById,
+        decided_at: new Date().toISOString(),
+      })
+      .eq("id", input.pitchId)
+      .select(PITCH_COLUMNS)
+      .single();
+    if (error) this.err("decidePitch", error);
+    return rowToPitch(data as PitchRow);
+  }
+
+  async convertPitch(input: {
+    pitchId: string;
+    editorId?: string;
+    deadline: string;
+    leaderId: string;
+    issueId?: string;
+  }): Promise<TaskZ> {
+    // Load the pitch first so we can copy the brief / sources across.
+    const { data: pdata, error: pErr } = await this.sb
+      .from("pitches")
+      .select(PITCH_COLUMNS)
+      .eq("id", input.pitchId)
+      .maybeSingle();
+    if (pErr) this.err("convertPitch(read)", pErr);
+    const pitchRow = pdata as PitchRow | null;
+    if (!pitchRow)
+      throw new ApiError(`Pitch ${input.pitchId} not found`, 404);
+    if (pitchRow.status === "converted")
+      throw new ApiError(
+        `Pitch ${input.pitchId} already converted`,
+        409
+      );
+
+    const instructions = [
+      pitchRow.angle && `Angle: ${pitchRow.angle}`,
+      pitchRow.why_now && `Why now: ${pitchRow.why_now}`,
+      (pitchRow.proposed_sources ?? []).length
+        ? `Proposed sources:\n- ${(pitchRow.proposed_sources ?? []).join("\n- ")}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
+    const brief: AssignmentBriefZ = {
+      angle: pitchRow.angle || undefined,
+      requiredSources: (pitchRow.proposed_sources ?? []).length
+        ? (pitchRow.proposed_sources ?? [])
+        : undefined,
+      publishingNotes: pitchRow.writer_note ?? undefined,
+    };
+
+    const { data: tdata, error: tErr } = await this.sb
+      .from("tasks")
+      .insert({
+        title: pitchRow.proposed_headline,
+        instructions,
+        writer_id: pitchRow.writer_id,
+        editor_id: input.editorId ?? null,
+        deadline: input.deadline,
+        color: "green",
+        word_count_target: pitchRow.expected_word_count ?? null,
+        section_id: pitchRow.section_id,
+        pitch_id: pitchRow.id,
+        issue_id: input.issueId ?? null,
+        assignment_brief: brief,
+      })
+      .select(TASK_COLUMNS)
+      .single();
+    if (tErr) this.err("convertPitch(insert task)", tErr);
+    const task = tdata as TaskRow;
+
+    const { error: pUpdErr } = await this.sb
+      .from("pitches")
+      .update({
+        status: "converted",
+        task_id: task.id,
+        decided_by_id: input.leaderId,
+        decided_at: new Date().toISOString(),
+      })
+      .eq("id", input.pitchId);
+    if (pUpdErr) this.err("convertPitch(mark converted)", pUpdErr);
+
+    if (input.issueId) {
+      const { error: slotErr } = await this.sb
+        .from("issue_slots")
+        .upsert(
+          {
+            issue_id: input.issueId,
+            task_id: task.id,
+            priority: "nice_to_run",
+          },
+          { onConflict: "issue_id,task_id" }
+        );
+      if (slotErr) this.err("convertPitch(slot)", slotErr);
+    }
+
+    return rowToTask(task);
+  }
+
+  // ── Newsroom: issues ──────────────────────────────────────────────────
+  async listIssues(): Promise<IssueZ[]> {
+    const { data, error } = await this.sb
+      .from("issues")
+      .select(ISSUE_COLUMNS)
+      .order("publish_date");
+    if (error) this.err("listIssues", error);
+    return (data ?? []).map((r) => rowToIssue(r as IssueRow));
+  }
+
+  async getIssue(id: string): Promise<IssueZ | null> {
+    const { data, error } = await this.sb
+      .from("issues")
+      .select(ISSUE_COLUMNS)
+      .eq("id", id)
+      .maybeSingle();
+    if (error) this.err("getIssue", error);
+    return data ? rowToIssue(data as IssueRow) : null;
+  }
+
+  async updateIssue(
+    id: string,
+    patch: {
+      number?: number;
+      name?: string;
+      publishDate?: string;
+      status?: IssueZ["status"];
+      notes?: string;
+    }
+  ): Promise<IssueZ> {
+    const update: Record<string, unknown> = {};
+    if (patch.number !== undefined) update.number = patch.number;
+    if (patch.name !== undefined) update.name = patch.name;
+    if (patch.publishDate !== undefined)
+      update.publish_date = patch.publishDate;
+    if (patch.status !== undefined) update.status = patch.status;
+    if (patch.notes !== undefined) update.notes = patch.notes;
+    const { data, error } = await this.sb
+      .from("issues")
+      .update(update)
+      .eq("id", id)
+      .select(ISSUE_COLUMNS)
+      .single();
+    if (error) this.err("updateIssue", error);
+    return rowToIssue(data as IssueRow);
+  }
+
+  async publishIssue(id: string): Promise<IssueZ> {
+    // 1) Mark the issue itself published.
+    const { data, error } = await this.sb
+      .from("issues")
+      .update({ status: "published" })
+      .eq("id", id)
+      .select(ISSUE_COLUMNS)
+      .single();
+    if (error) this.err("publishIssue", error);
+    // 2) Promote every still-open slotted task to complete so the derived
+    //    stage helper renders it as "published". Mock parity.
+    const { data: slotData, error: slotErr } = await this.sb
+      .from("issue_slots")
+      .select("task_id")
+      .eq("issue_id", id);
+    if (slotErr) this.err("publishIssue(slots)", slotErr);
+    const taskIds = ((slotData ?? []) as { task_id: string }[]).map(
+      (r) => r.task_id
+    );
+    if (taskIds.length > 0) {
+      const { error: tErr } = await this.sb
+        .from("tasks")
+        .update({ status: "complete" })
+        .in("id", taskIds)
+        .neq("status", "complete");
+      if (tErr) this.err("publishIssue(promote)", tErr);
+    }
+    return rowToIssue(data as IssueRow);
+  }
+
+  // ── Newsroom: issue slots ─────────────────────────────────────────────
+  async listIssueSlots(issueId?: string): Promise<IssueSlotZ[]> {
+    let q = this.sb
+      .from("issue_slots")
+      .select("id, issue_id, task_id, priority");
+    if (issueId) q = q.eq("issue_id", issueId);
+    const { data, error } = await q.order("created_at", { ascending: true });
+    if (error) this.err("listIssueSlots", error);
+    return (data ?? []).map((r) => rowToIssueSlot(r as IssueSlotRow));
+  }
+
+  async upsertIssueSlot(input: {
+    issueId: string;
+    taskId: string;
+    priority?: IssueSlotZ["priority"];
+  }): Promise<IssueSlotZ> {
+    const { data, error } = await this.sb
+      .from("issue_slots")
+      .upsert(
+        {
+          issue_id: input.issueId,
+          task_id: input.taskId,
+          priority: input.priority ?? "nice_to_run",
+        },
+        { onConflict: "issue_id,task_id" }
+      )
+      .select("id, issue_id, task_id, priority")
+      .single();
+    if (error) this.err("upsertIssueSlot", error);
+    // Also attach the issue back onto the task for convenience.
+    const { error: tErr } = await this.sb
+      .from("tasks")
+      .update({ issue_id: input.issueId })
+      .eq("id", input.taskId);
+    if (tErr) this.err("upsertIssueSlot(attach task)", tErr);
+    return rowToIssueSlot(data as IssueSlotRow);
+  }
+
+  async removeIssueSlot(id: string): Promise<void> {
+    // Find the row first so we can detach the matching issue from the task.
+    const { data: existing, error: e1 } = await this.sb
+      .from("issue_slots")
+      .select("id, issue_id, task_id, priority")
+      .eq("id", id)
+      .maybeSingle();
+    if (e1) this.err("removeIssueSlot(read)", e1);
+    if (!existing) return;
+    const slot = existing as IssueSlotRow;
+    const { error: e2 } = await this.sb
+      .from("issue_slots")
+      .delete()
+      .eq("id", id);
+    if (e2) this.err("removeIssueSlot(delete)", e2);
+    const { error: e3 } = await this.sb
+      .from("tasks")
+      .update({ issue_id: null })
+      .eq("id", slot.task_id)
+      .eq("issue_id", slot.issue_id);
+    if (e3) this.err("removeIssueSlot(detach task)", e3);
+  }
+
+  // ── Newsroom: editorial checklists ────────────────────────────────────
+  async getEditorialChecklist(
+    taskId: string
+  ): Promise<EditorialChecklistZ | null> {
+    const { data, error } = await this.sb
+      .from("editorial_checklists")
+      .select("task_id, items, updated_at")
+      .eq("task_id", taskId)
+      .maybeSingle();
+    if (error) this.err("getEditorialChecklist", error);
+    return data ? rowToChecklist(data as EditorialChecklistRow) : null;
+  }
+
+  async updateChecklistItem(input: {
+    taskId: string;
+    key: string;
+    by: string;
+    checked?: boolean;
+  }): Promise<EditorialChecklistZ> {
+    // Read existing checklist (or seed defaults from the task).
+    const { data: existing, error: rErr } = await this.sb
+      .from("editorial_checklists")
+      .select("task_id, items, updated_at")
+      .eq("task_id", input.taskId)
+      .maybeSingle();
+    if (rErr) this.err("updateChecklistItem(read)", rErr);
+
+    let items: ChecklistItem[];
+    if (existing) {
+      items = ((existing as EditorialChecklistRow).items ??
+        []) as ChecklistItem[];
+    } else {
+      // Determine business/sensitive groups from the task (mock parity).
+      const { data: tdata, error: tErr } = await this.sb
+        .from("tasks")
+        .select("section_id")
+        .eq("id", input.taskId)
+        .maybeSingle();
+      if (tErr) this.err("updateChecklistItem(read task)", tErr);
+      const sectionId = (tdata as { section_id: string | null } | null)
+        ?.section_id;
+      // Pull the section slug to decide if it's business/markets.
+      let isBusiness = false;
+      if (sectionId) {
+        const { data: sdata } = await this.sb
+          .from("sections")
+          .select("slug")
+          .eq("id", sectionId)
+          .maybeSingle();
+        const slug = (sdata as { slug: string } | null)?.slug;
+        isBusiness = slug === "business" || slug === "markets";
+      }
+      // If a sensitive flag is open/holding, include that group too.
+      const { data: flagData } = await this.sb
+        .from("sensitive_flags")
+        .select("id, status")
+        .eq("task_id", input.taskId)
+        .in("status", ["open", "holding"])
+        .limit(1);
+      const isSensitive = ((flagData ?? []) as unknown[]).length > 0;
+      items = defaultChecklistItems({ isBusiness, isSensitive });
+    }
+
+    const now = new Date().toISOString();
+    const nextItems = items.map((it): ChecklistItem => {
+      if (it.key !== input.key) return it;
+      const checked =
+        input.checked !== undefined ? input.checked : !it.checked;
+      return {
+        ...it,
+        checked,
+        checkedById: checked ? input.by : undefined,
+        checkedAt: checked ? now : undefined,
+      };
+    });
+
+    const { data, error } = await this.sb
+      .from("editorial_checklists")
+      .upsert(
+        { task_id: input.taskId, items: nextItems, updated_at: now },
+        { onConflict: "task_id" }
+      )
+      .select("task_id, items, updated_at")
+      .single();
+    if (error) this.err("updateChecklistItem(write)", error);
+    return rowToChecklist(data as EditorialChecklistRow);
+  }
+
+  // ── Newsroom: sensitive flags ─────────────────────────────────────────
+  async listSensitiveFlags(filter?: {
+    status?: SensitiveFlagZ["status"];
+    taskId?: string;
+  }): Promise<SensitiveFlagZ[]> {
+    let q = this.sb.from("sensitive_flags").select(SENSITIVE_COLUMNS);
+    if (filter?.status) q = q.eq("status", filter.status);
+    if (filter?.taskId) q = q.eq("task_id", filter.taskId);
+    const { data, error } = await q.order("raised_at", { ascending: false });
+    if (error) this.err("listSensitiveFlags", error);
+    return (data ?? []).map((r) => rowToSensitive(r as SensitiveFlagRow));
+  }
+
+  async raiseSensitiveFlag(input: {
+    taskId: string;
+    raisedById: string;
+    reason: SensitiveFlagZ["reason"];
+    notes: string;
+  }): Promise<SensitiveFlagZ> {
+    const { data, error } = await this.sb
+      .from("sensitive_flags")
+      .insert({
+        task_id: input.taskId,
+        raised_by_id: input.raisedById,
+        reason: input.reason,
+        notes: input.notes,
+        status: "open",
+      })
+      .select(SENSITIVE_COLUMNS)
+      .single();
+    if (error) this.err("raiseSensitiveFlag", error);
+
+    // Mirror mock store: ensure the sensitive checklist group exists.
+    try {
+      const existing = await this.getEditorialChecklist(input.taskId);
+      const hasSensitive = (existing?.items ?? []).some(
+        (i) => i.group === "sensitive"
+      );
+      if (!hasSensitive) {
+        const sensitiveItems = defaultChecklistItems({
+          isBusiness: false,
+          isSensitive: true,
+        }).filter((i) => i.group === "sensitive");
+        const merged: ChecklistItem[] = [
+          ...(existing?.items ?? []),
+          ...sensitiveItems,
+        ];
+        if (existing) {
+          await this.sb
+            .from("editorial_checklists")
+            .update({ items: merged, updated_at: new Date().toISOString() })
+            .eq("task_id", input.taskId);
+        } else {
+          // No checklist yet — seed defaults including the sensitive group.
+          const seeded = defaultChecklistItems({
+            isBusiness: false,
+            isSensitive: true,
+          });
+          await this.sb
+            .from("editorial_checklists")
+            .insert({
+              task_id: input.taskId,
+              items: seeded,
+              updated_at: new Date().toISOString(),
+            });
+        }
+      }
+    } catch {
+      // Non-fatal — the flag is already saved.
+    }
+
+    return rowToSensitive(data as SensitiveFlagRow);
+  }
+
+  async decideSensitiveFlag(input: {
+    taskId: string;
+    decidedById: string;
+    status: "cleared" | "holding";
+    note?: string;
+  }): Promise<SensitiveFlagZ> {
+    // Pick the most recent active flag for the task.
+    const { data: pending, error: e1 } = await this.sb
+      .from("sensitive_flags")
+      .select(SENSITIVE_COLUMNS)
+      .eq("task_id", input.taskId)
+      .order("raised_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (e1) this.err("decideSensitiveFlag(read)", e1);
+    const row = pending as SensitiveFlagRow | null;
+    if (!row)
+      throw new ApiError(
+        `No sensitive flag on task ${input.taskId}`,
+        404
+      );
+    const { data, error } = await this.sb
+      .from("sensitive_flags")
+      .update({
+        status: input.status,
+        decided_by_id: input.decidedById,
+        decided_at: new Date().toISOString(),
+        decision_note: input.note ?? null,
+      })
+      .eq("id", row.id)
+      .select(SENSITIVE_COLUMNS)
+      .single();
+    if (error) this.err("decideSensitiveFlag(update)", error);
+    return rowToSensitive(data as SensitiveFlagRow);
   }
 }
