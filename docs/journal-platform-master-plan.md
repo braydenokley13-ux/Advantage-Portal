@@ -1,5 +1,7 @@
 # Journal Writing Team Management Platform — Master Plan
 
+> **Brand note:** "The Advantage Journal" is the brand name of a student newspaper / online publication (theadvantagejournal.org). This portal is the newsroom operating system for that publication. Wherever this older planning doc says "writing team" or "journal," read it as "student newsroom" and "publication." Newer phases (see `newsroom-workflow-implementation-plan.md`) introduce sections, pitches, issues, copy desk, fact-checking, and sensitive-story escalation on top of the base model below.
+
 **Audience:** Engineering + Product
 **Scale target:** ~40 active users, ~200 active tasks, low concurrent write load
 **Platforms:** Web (responsive) + iOS + Android

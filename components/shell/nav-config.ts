@@ -102,6 +102,12 @@ export const NAV_ITEMS: NavItem[] = [
     icon: ShieldAlert,
     roles: ["leader", "admin"],
   },
+  {
+    href: "/admin/escalations",
+    label: "Escalations",
+    icon: ShieldAlert,
+    roles: ["leader", "admin"],
+  },
 ];
 
 export function navForRole(role: Role): NavItem[] {
