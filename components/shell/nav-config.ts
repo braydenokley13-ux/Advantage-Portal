@@ -67,7 +67,7 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/announcements",
     label: "Announcements",
     icon: Megaphone,
-    roles: ["leader", "admin"],
+    roles: ["writer", "editor", "leader", "admin"],
   },
   {
     href: "/team",

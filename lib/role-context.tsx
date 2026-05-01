@@ -7,7 +7,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { users } from "./mock-data";
+import { useStore } from "./store";
 import type { Role, User } from "./types";
 
 type RoleContextValue = {
@@ -19,10 +19,11 @@ type RoleContextValue = {
 
 const RoleContext = createContext<RoleContextValue | null>(null);
 
-const DEFAULT_USER_ID = "u6"; // leader, for the broadest demo view
+const DEFAULT_USER_ID = "u6"; // leader, broadest demo view
 const STORAGE_KEY = "advantage-portal:active-user-id";
 
 export function RoleProvider({ children }: { children: React.ReactNode }) {
+  const { users } = useStore();
   const [userId, setUserId] = useState<string>(DEFAULT_USER_ID);
 
   useEffect(() => {
@@ -33,7 +34,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     if (saved && users.some((u) => u.id === saved)) {
       setUserId(saved);
     }
-  }, []);
+  }, [users]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -42,9 +43,10 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
   }, [userId]);
 
   const value = useMemo<RoleContextValue>(() => {
-    const user = users.find((u) => u.id === userId) ?? users[0];
+    const user =
+      users.find((u) => u.id === userId) ?? users[0];
     return { user, role: user.role, setUserId, allUsers: users };
-  }, [userId]);
+  }, [userId, users]);
 
   return <RoleContext.Provider value={value}>{children}</RoleContext.Provider>;
 }

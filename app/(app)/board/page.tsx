@@ -1,13 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import { Plus, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/page-header";
 import { KanbanBoard } from "@/components/kanban/board";
+import { TaskFormDialog } from "@/components/task/task-form-dialog";
 import { useRole } from "@/lib/role-context";
+import { canCreateTask } from "@/lib/permissions";
 
 export default function BoardPage() {
   const { role } = useRole();
+  const [creating, setCreating] = useState(false);
   return (
     <div className="container py-6 md:py-8 space-y-6">
       <PageHeader
@@ -20,8 +24,8 @@ export default function BoardPage() {
               : "Every task across the team. Drag freely to manage flow."
         }
         actions={
-          (role === "leader" || role === "admin") && (
-            <Button variant="gradient">
+          canCreateTask(role) && (
+            <Button variant="gradient" onClick={() => setCreating(true)}>
               <Plus className="h-4 w-4" /> New task
             </Button>
           )
@@ -41,6 +45,8 @@ export default function BoardPage() {
       )}
 
       <KanbanBoard />
+
+      <TaskFormDialog mode="create" open={creating} onOpenChange={setCreating} />
     </div>
   );
 }

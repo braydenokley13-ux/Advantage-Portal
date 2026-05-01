@@ -23,9 +23,11 @@ import type {
   NotificationKind,
   Review,
   ReviewDecision,
+  Role,
   Submission,
   SubmissionType,
   Task,
+  TaskColor,
   TaskStatus,
   User,
 } from "./types";
@@ -41,6 +43,21 @@ type StoreValue = {
   notifications: Notification[];
 
   setTaskStatus: (taskId: string, status: TaskStatus) => void;
+  createTask: (input: {
+    title: string;
+    instructions: string;
+    writerId: string;
+    editorId?: string;
+    deadline: string;
+    color?: TaskColor;
+  }) => Task;
+  updateTask: (
+    taskId: string,
+    patch: Partial<Pick<Task, "title" | "instructions" | "writerId" | "editorId" | "deadline" | "color">>
+  ) => void;
+  updateUserRole: (userId: string, role: Role) => void;
+  setUserActive: (userId: string, active: boolean) => void;
+  togglePinMessage: (messageId: string) => void;
   createSubmission: (input: {
     taskId: string;
     authorId: string;
@@ -86,6 +103,9 @@ let _id = 1000;
 const nextId = (prefix: string) => `${prefix}${++_id}`;
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
+  const [usersState, setUsersState] = useState<User[]>(() =>
+    users.map((u) => ({ active: true, ...u }))
+  );
   const [tasks, setTasks] = useState<Task[]>(seedTasks);
   const [submissions, setSubmissions] = useState<Submission[]>(seedSubmissions);
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -101,6 +121,88 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       prev.map((t) => (t.id === taskId ? { ...t, status } : t))
     );
   }, []);
+
+  const createTask = useCallback<StoreValue["createTask"]>((input) => {
+    const t: Task = {
+      id: nextId("t"),
+      title: input.title,
+      instructions: input.instructions,
+      writerId: input.writerId,
+      editorId: input.editorId,
+      deadline: input.deadline,
+      status: "not_started",
+      color: input.color ?? "green",
+      createdAt: new Date().toISOString(),
+    };
+    setTasks((prev) => [t, ...prev]);
+
+    setNotifications((prev) => [
+      {
+        id: nextId("n"),
+        userId: input.writerId,
+        kind: "task_assigned",
+        title: `Assigned: ${input.title}`,
+        body: `Due ${new Date(input.deadline).toLocaleDateString()}`,
+        read: false,
+        createdAt: new Date().toISOString(),
+      },
+      ...(input.editorId
+        ? [
+            {
+              id: nextId("n"),
+              userId: input.editorId,
+              kind: "task_assigned" as const,
+              title: `Editing: ${input.title}`,
+              body: "You are the assigned editor.",
+              read: false,
+              createdAt: new Date().toISOString(),
+            },
+          ]
+        : []),
+      ...prev,
+    ]);
+    return t;
+  }, []);
+
+  const updateTask = useCallback<StoreValue["updateTask"]>((taskId, patch) => {
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, ...patch } : t))
+    );
+  }, []);
+
+  const updateUserRole = useCallback<StoreValue["updateUserRole"]>(
+    (userId, role) => {
+      setUsersState((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, role } : u))
+      );
+    },
+    []
+  );
+
+  const setUserActive = useCallback<StoreValue["setUserActive"]>(
+    (userId, active) => {
+      setUsersState((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, active } : u))
+      );
+    },
+    []
+  );
+
+  const togglePinMessage = useCallback<StoreValue["togglePinMessage"]>(
+    (messageId) => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId
+            ? {
+                ...m,
+                pinnedAt: m.pinnedAt ? undefined : new Date().toISOString(),
+              }
+            : m
+        )
+      );
+    },
+    []
+  );
 
   const pushNotification = useCallback(
     (input: {
@@ -299,7 +401,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<StoreValue>(
     () => ({
-      users,
+      users: usersState,
       tasks,
       submissions,
       reviews,
@@ -308,6 +410,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       messages,
       notifications,
       setTaskStatus,
+      createTask,
+      updateTask,
+      updateUserRole,
+      setUserActive,
+      togglePinMessage,
       createSubmission,
       submitReview,
       addComment,
@@ -319,6 +426,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       pushNotification,
     }),
     [
+      usersState,
       tasks,
       submissions,
       reviews,
@@ -327,6 +435,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       messages,
       notifications,
       setTaskStatus,
+      createTask,
+      updateTask,
+      updateUserRole,
+      setUserActive,
+      togglePinMessage,
       createSubmission,
       submitReview,
       addComment,

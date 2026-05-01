@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Calendar, ClipboardList, Inbox, MessageSquare, Send } from "lucide-react";
+import {
+  Calendar,
+  ClipboardList,
+  Inbox,
+  MessageSquare,
+  Pencil,
+  Send,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,15 +18,17 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { SubmissionForm } from "./submission-form";
 import { SubmissionHistory } from "./submission-history";
 import { SubmissionViewer } from "./submission-viewer";
 import { CommentsPanel } from "./comments-panel";
 import { ReviewPanel } from "./review-panel";
+import { TaskFormDialog } from "./task-form-dialog";
 import { useStore } from "@/lib/store";
 import { useRole } from "@/lib/role-context";
-import { canReview, canSubmit } from "@/lib/permissions";
+import { canEditTask, canReview, canSubmit } from "@/lib/permissions";
 import { STATUS_LABELS } from "@/lib/kanban-rules";
 import { initials, cn } from "@/lib/utils";
 import { format, formatDistanceToNowStrict, isPast } from "date-fns";
@@ -71,6 +80,7 @@ export function TaskDrawer({
     taskSubmissions.find((s) => s.id === selectedId) ?? current;
 
   const [tab, setTab] = useState("brief");
+  const [editing, setEditing] = useState(false);
   useEffect(() => {
     if (!task) return;
     if (canReview({ task, user })) setTab("review");
@@ -91,13 +101,24 @@ export function TaskDrawer({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent side="right" className="p-0">
         <DialogHeader className="pr-12">
-          <div className="flex items-center gap-2">
-            <Badge variant={STATUS_TONE[task.status]}>
-              {STATUS_LABELS[task.status]}
-            </Badge>
-            <Badge variant="outline" className="capitalize">
-              {task.color}
-            </Badge>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Badge variant={STATUS_TONE[task.status]}>
+                {STATUS_LABELS[task.status]}
+              </Badge>
+              <Badge variant="outline" className="capitalize">
+                {task.color}
+              </Badge>
+            </div>
+            {canEditTask(user.role) && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setEditing(true)}
+              >
+                <Pencil className="h-3.5 w-3.5" /> Edit
+              </Button>
+            )}
           </div>
           <DialogTitle className="text-lg leading-tight mt-1">
             {task.title}
@@ -213,6 +234,13 @@ export function TaskDrawer({
           </Tabs>
         </div>
       </DialogContent>
+
+      <TaskFormDialog
+        mode="edit"
+        task={task}
+        open={editing}
+        onOpenChange={setEditing}
+      />
     </Dialog>
   );
 }

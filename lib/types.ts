@@ -21,6 +21,7 @@ export interface User {
   email: string;
   role: Role;
   avatarUrl?: string;
+  active?: boolean;
 }
 
 export interface Task {
@@ -81,6 +82,7 @@ export interface Message {
   authorId: string;
   body: string;
   createdAt: string;
+  pinnedAt?: string;
 }
 
 export type NotificationKind =

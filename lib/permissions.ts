@@ -55,3 +55,29 @@ export function visibleConversations(args: {
     c.memberIds.includes(args.user.id)
   );
 }
+
+export function canCreateTask(role: Role) {
+  return role === "leader" || role === "admin";
+}
+
+export function canEditTask(role: Role) {
+  return role === "leader" || role === "admin";
+}
+
+/** View user list. Everyone with an account can see the team page. */
+export function canViewTeam(_role: Role) {
+  return true;
+}
+
+/** Mutate users (role changes, deactivate). Admin only per master plan. */
+export function canManageUsers(role: Role) {
+  return role === "admin";
+}
+
+export function canPostAnnouncement(role: Role) {
+  return role === "leader" || role === "admin";
+}
+
+export function canPinMessage(role: Role) {
+  return role === "leader" || role === "admin";
+}
