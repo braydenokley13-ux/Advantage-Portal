@@ -1,0 +1,104 @@
+export type Role = "writer" | "editor" | "leader" | "admin";
+
+export type TaskStatus =
+  | "not_started"
+  | "in_progress"
+  | "submitted"
+  | "complete";
+
+export type TaskColor = "green" | "amber" | "red";
+
+export type ReviewDecision =
+  | "approved"
+  | "changes_requested"
+  | "rejected";
+
+export type SubmissionType = "file" | "google_doc" | "inline";
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  avatarUrl?: string;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  instructions: string;
+  writerId: string;
+  editorId?: string;
+  deadline: string;
+  status: TaskStatus;
+  color: TaskColor;
+  currentSubmissionId?: string;
+  createdAt: string;
+}
+
+export interface Submission {
+  id: string;
+  taskId: string;
+  type: SubmissionType;
+  version: number;
+  content: string;
+  createdAt: string;
+  isCurrent: boolean;
+}
+
+export interface Review {
+  id: string;
+  submissionId: string;
+  reviewerId: string;
+  decision: ReviewDecision;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface Comment {
+  id: string;
+  submissionId: string;
+  authorId: string;
+  body: string;
+  inline: boolean;
+  resolved: boolean;
+  createdAt: string;
+}
+
+export type ConversationKind = "dm" | "group" | "all_team" | "issue";
+
+export interface Conversation {
+  id: string;
+  kind: ConversationKind;
+  title: string;
+  memberIds: string[];
+  lastMessageAt?: string;
+}
+
+export interface Message {
+  id: string;
+  conversationId: string;
+  authorId: string;
+  body: string;
+  createdAt: string;
+}
+
+export type NotificationKind =
+  | "task_assigned"
+  | "deadline"
+  | "submission"
+  | "comment"
+  | "review_decision"
+  | "task_complete"
+  | "message"
+  | "announcement";
+
+export interface Notification {
+  id: string;
+  userId: string;
+  kind: NotificationKind;
+  title: string;
+  body?: string;
+  read: boolean;
+  createdAt: string;
+}
