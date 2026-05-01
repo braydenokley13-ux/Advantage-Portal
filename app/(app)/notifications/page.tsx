@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/page-header";
 import { NotificationItem } from "@/components/notifications/notification-item";
 import { DeadlineScanControl } from "@/components/notifications/deadline-scan-control";
 import { useStore } from "@/lib/store";
+import { useNotifications } from "@/lib/hooks";
 import { useRole } from "@/lib/role-context";
 import { cn } from "@/lib/utils";
 import type { NotificationKind } from "@/lib/types";
@@ -29,18 +30,18 @@ const TABS: { value: Tab; label: string }[] = [
 
 export default function NotificationsPage() {
   const { user } = useRole();
-  const { notifications, markAllRead } = useStore();
+  const { markAllRead } = useStore();
+  const { data: notificationsData } = useNotifications();
+  const notifications = notificationsData ?? [];
   const [tab, setTab] = useState<Tab>("all");
 
   const mine = useMemo(
     () =>
-      notifications
-        .filter((n) => n.userId === user.id)
-        .sort(
-          (a, b) =>
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        ),
-    [notifications, user.id]
+      [...notifications].sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      ),
+    [notifications]
   );
 
   const filtered = useMemo(() => {

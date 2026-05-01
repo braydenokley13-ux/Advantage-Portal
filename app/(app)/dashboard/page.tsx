@@ -20,22 +20,28 @@ import { TaskDrawer } from "@/components/task/task-drawer";
 import { TaskFormDialog } from "@/components/task/task-form-dialog";
 import { PageHeader } from "@/components/page-header";
 import { useRole } from "@/lib/role-context";
-import { useStore } from "@/lib/store";
+import {
+  useMessages,
+  useNotifications,
+  useUsers,
+  useVisibleTasks,
+} from "@/lib/hooks";
 import { canCreateTask } from "@/lib/permissions";
-import { visibleTasks } from "@/lib/visibility";
 import { initials } from "@/lib/utils";
 import { isPast, isWithinInterval, addDays, format } from "date-fns";
 
 export default function DashboardPage() {
   const { user, role } = useRole();
-  const { tasks, notifications, messages, users } = useStore();
+  const { data: visibleTasksData } = useVisibleTasks();
+  const myTasks = visibleTasksData ?? [];
+  const { data: notificationsData } = useNotifications();
+  const { data: usersData } = useUsers();
+  const { data: messagesData } = useMessages();
+  const notifications = notificationsData ?? [];
+  const users = usersData ?? [];
+  const messages = messagesData ?? [];
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-
-  const myTasks = useMemo(
-    () => visibleTasks({ tasks, role, userId: user.id }),
-    [tasks, role, user.id]
-  );
 
   const stats = useMemo(() => {
     const now = new Date();
