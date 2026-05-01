@@ -1,7 +1,14 @@
 import type {
+  AssignmentBrief,
   Conversation,
+  EditorialChecklist,
+  Issue,
+  IssueSlot,
   Message,
   Notification,
+  Pitch,
+  Section,
+  SensitiveFlag,
   Submission,
   Task,
   User,
@@ -23,6 +30,132 @@ const inDays = (n: number) =>
 const daysAgo = (n: number) =>
   new Date(today.getTime() - n * 86400000).toISOString();
 
+// ── Sections ───────────────────────────────────────────────────────────────
+export const sections: Section[] = [
+  {
+    id: "sec-news",
+    slug: "news",
+    name: "News",
+    description: "Reporting on school, local, and national stories that affect students.",
+    accent: "sky",
+  },
+  {
+    id: "sec-opinion",
+    slug: "opinion",
+    name: "Opinion",
+    description: "Clearly-labeled commentary, op-eds, and editorials.",
+    accent: "violet",
+  },
+  {
+    id: "sec-business",
+    slug: "business",
+    name: "Business",
+    description: "Companies, founders, and the economics behind student life.",
+    accent: "emerald",
+  },
+  {
+    id: "sec-markets",
+    slug: "markets",
+    name: "Markets & Finance",
+    description: "Markets explained for teen readers — never investment advice.",
+    accent: "amber",
+  },
+  {
+    id: "sec-community",
+    slug: "community",
+    name: "Community",
+    description: "School clubs, events, and people doing things worth covering.",
+    accent: "rose",
+  },
+  {
+    id: "sec-culture",
+    slug: "culture",
+    name: "Culture",
+    description: "Books, music, film, internet, and the way teens are living.",
+    accent: "fuchsia",
+  },
+  {
+    id: "sec-world",
+    slug: "world",
+    name: "World",
+    description: "International news framed for student readers.",
+    accent: "indigo",
+  },
+];
+
+// ── Issues ─────────────────────────────────────────────────────────────────
+export const issues: Issue[] = [
+  {
+    id: "iss-42",
+    number: 42,
+    name: "Issue #42 — Spring Forward",
+    publishDate: inDays(6),
+    status: "production",
+    notes: "Cover: spring sports kickoff. Hold one Markets slot.",
+  },
+  {
+    id: "iss-43",
+    number: 43,
+    name: "Issue #43 — Year-End Review",
+    publishDate: inDays(27),
+    status: "planning",
+    notes: "Year-in-review angles. Encourage long-form features.",
+  },
+];
+
+// ── Briefs (reused below) ──────────────────────────────────────────────────
+const marketBrief: AssignmentBrief = {
+  angle:
+    "After a volatile quarter, where do major sectors actually stand for student readers?",
+  mustAnswer: [
+    "Which sectors moved the most this quarter and why?",
+    "What does this mean for students saving for college or a first job?",
+    "Where are the loudest analyst disagreements?",
+  ],
+  requiredSources: [
+    "Two cited primary data sources (FRED, SEC filings, exchange data).",
+    "One named analyst or economist quote.",
+  ],
+  quoteRequirements: "At least one on-the-record quote from a named analyst.",
+  visualNeeds: "One chart of sector returns; pull quote from analyst.",
+  publishingNotes: "House style on numbers — spell out percentages on first use.",
+};
+
+const profileBrief: AssignmentBrief = {
+  angle:
+    "How a high-school senior turned a side project into a real business — and what other students can learn.",
+  mustAnswer: [
+    "What did the founding moment actually look like?",
+    "What's the first thing she'd tell another student trying to start a company?",
+    "What is the business doing today, with verifiable numbers?",
+  ],
+  requiredSources: [
+    "Two interviews with the founder (recorded).",
+    "One interview with an early customer or teammate.",
+  ],
+  quoteRequirements: "Three on-the-record quotes minimum, named.",
+  visualNeeds: "Portrait photo with permission; product screenshot if relevant.",
+  publishingNotes: "Long-form feature; aim for 1,800–2,200 words.",
+};
+
+const opEdBrief: AssignmentBrief = {
+  angle:
+    "Why student journalists should be in the room when AI policy gets written.",
+  mustAnswer: [
+    "What is the policy actually proposing?",
+    "Who benefits and who is left out?",
+    "What's the writer's stance, and what's the strongest counterargument?",
+  ],
+  requiredSources: [
+    "Cite the bill / policy text directly.",
+    "One linked source for any factual claim.",
+  ],
+  quoteRequirements: "Quotes optional; if used, must be on-the-record.",
+  visualNeeds: "Optional. Pull quote recommended.",
+  publishingNotes: "Mark clearly as Opinion at top of piece.",
+};
+
+// ── Tasks (stories) ────────────────────────────────────────────────────────
 export const tasks: Task[] = [
   {
     id: "t1",
@@ -37,6 +170,12 @@ export const tasks: Task[] = [
     createdAt: daysAgo(3),
     wordCountTarget: 1800,
     citationsRequired: true,
+    sectionId: "sec-markets",
+    issueId: "iss-42",
+    copyEditorId: "u5",
+    factCheckerId: "u4",
+    slug: "quarterly-market-outlook",
+    brief: marketBrief,
   },
   {
     id: "t2",
@@ -49,6 +188,11 @@ export const tasks: Task[] = [
     status: "not_started",
     color: "green",
     createdAt: daysAgo(1),
+    sectionId: "sec-business",
+    issueId: "iss-42",
+    slug: "founder-profile-lina-wei",
+    brief: profileBrief,
+    wordCountTarget: 2000,
   },
   {
     id: "t3",
@@ -61,6 +205,11 @@ export const tasks: Task[] = [
     color: "amber",
     currentSubmissionId: "s1",
     createdAt: daysAgo(4),
+    sectionId: "sec-news",
+    issueId: "iss-42",
+    slug: "weekly-digest-42",
+    wordCountTarget: 900,
+    wordCountActual: 920,
   },
   {
     id: "t4",
@@ -73,6 +222,22 @@ export const tasks: Task[] = [
     color: "red",
     currentSubmissionId: "s2",
     createdAt: daysAgo(6),
+    sectionId: "sec-opinion",
+    issueId: "iss-42",
+    slug: "ai-policy-at-the-hill",
+    brief: opEdBrief,
+    wordCountTarget: 900,
+    wordCountActual: 940,
+    sensitive: {
+      id: "sf1",
+      taskId: "t4",
+      reason: "politics",
+      notes:
+        "Strong stance on a contested policy. Wants a leader read before publication.",
+      status: "open",
+      raisedById: "u5",
+      raisedAt: daysAgo(1),
+    },
   },
   {
     id: "t5",
@@ -85,6 +250,10 @@ export const tasks: Task[] = [
     color: "green",
     currentSubmissionId: "s3",
     createdAt: daysAgo(10),
+    sectionId: "sec-culture",
+    slug: "book-review-the-new-map",
+    wordCountTarget: 700,
+    wordCountActual: 715,
   },
   {
     id: "t6",
@@ -97,6 +266,9 @@ export const tasks: Task[] = [
     color: "green",
     createdAt: daysAgo(0),
     wordCountTarget: 600,
+    sectionId: "sec-news",
+    issueId: "iss-43",
+    slug: "interview-prep-ortiz",
   },
   {
     id: "t7",
@@ -109,6 +281,223 @@ export const tasks: Task[] = [
     createdAt: daysAgo(2),
   },
 ];
+
+// ── Issue slots ────────────────────────────────────────────────────────────
+export const issueSlots: IssueSlot[] = [
+  { id: "slot1", issueId: "iss-42", taskId: "t1", priority: "must_run" },
+  { id: "slot2", issueId: "iss-42", taskId: "t3", priority: "must_run" },
+  { id: "slot3", issueId: "iss-42", taskId: "t4", priority: "nice_to_run" },
+  { id: "slot4", issueId: "iss-42", taskId: "t2", priority: "nice_to_run" },
+  { id: "slot5", issueId: "iss-43", taskId: "t6", priority: "must_run" },
+];
+
+// ── Pitches ────────────────────────────────────────────────────────────────
+export const pitches: Pitch[] = [
+  {
+    id: "p1",
+    proposedHeadline: "Inside the school's quiet AI grading pilot",
+    sectionId: "sec-news",
+    angle:
+      "Two teachers are using an LLM to triage essay drafts. Students didn't know.",
+    whyNow:
+      "Pilot quietly expanded last week — first time it's touched required coursework.",
+    proposedSources: [
+      "Two of the teachers running the pilot",
+      "Three students whose work was graded",
+      "District policy doc on AI in classrooms",
+    ],
+    expectedWordCount: 1200,
+    deadlinePref: inDays(8),
+    writerNote: "I have one teacher already willing to talk on the record.",
+    writerId: "u2",
+    status: "submitted",
+    createdAt: daysAgo(1),
+  },
+  {
+    id: "p2",
+    proposedHeadline: "Why the cafeteria meal-plan price jumped 14%",
+    sectionId: "sec-business",
+    angle:
+      "Track the procurement contract change that hit families this term.",
+    whyNow: "Bill goes into effect next month.",
+    proposedSources: [
+      "District procurement filings",
+      "PTA board members",
+      "Two named families",
+    ],
+    expectedWordCount: 900,
+    deadlinePref: inDays(11),
+    writerId: "u1",
+    status: "submitted",
+    createdAt: daysAgo(2),
+  },
+  {
+    id: "p3",
+    proposedHeadline: "Markets explainer: what 'inverted yield curve' means for your first job",
+    sectionId: "sec-markets",
+    angle:
+      "Make a scary-sounding macro signal concrete for a teen reader.",
+    whyNow: "Curve un-inverted last week — first time in 18 months.",
+    proposedSources: [
+      "FRED data",
+      "Quote from one named economist",
+    ],
+    expectedWordCount: 800,
+    writerId: "u3",
+    status: "accepted",
+    editorNote: "Great hook. Keep it under 800 and avoid investment advice phrasing.",
+    decidedById: "u4",
+    decidedAt: daysAgo(0),
+    createdAt: daysAgo(3),
+  },
+  {
+    id: "p4",
+    proposedHeadline: "Op-ed: bring back the school newspaper print run",
+    sectionId: "sec-opinion",
+    angle: "Argue the case for a quarterly print edition alongside the site.",
+    whyNow: "Budget meeting next week.",
+    proposedSources: ["Last year's circulation numbers"],
+    expectedWordCount: 700,
+    writerId: "u1",
+    status: "declined",
+    editorNote:
+      "Strong voice but argument is thin without cost data. Re-pitch with numbers.",
+    decidedById: "u5",
+    decidedAt: daysAgo(1),
+    createdAt: daysAgo(5),
+  },
+  {
+    id: "p5",
+    proposedHeadline: "Robotics team's nationals run, in their own words",
+    sectionId: "sec-community",
+    angle: "Oral history of the season told by five team members.",
+    whyNow: "Nationals start in three weeks.",
+    proposedSources: ["Five team members", "Coach"],
+    expectedWordCount: 1500,
+    writerId: "u3",
+    status: "submitted",
+    createdAt: daysAgo(0),
+  },
+  {
+    id: "p6",
+    proposedHeadline: "Every senior film of the year, ranked",
+    sectionId: "sec-culture",
+    angle: "Light, fun ranking of the senior thesis films, with clips.",
+    whyNow: "Festival is next month.",
+    proposedSources: ["Festival program", "Two film teachers"],
+    expectedWordCount: 1100,
+    writerId: "u2",
+    status: "submitted",
+    createdAt: daysAgo(0),
+  },
+  {
+    id: "p7",
+    proposedHeadline: "The week the dollar story changed",
+    sectionId: "sec-world",
+    angle:
+      "What's actually behind the recent dollar moves and why teen savers should notice.",
+    whyNow: "FX desks called it 'the most important week in months'.",
+    proposedSources: [
+      "Bank policy statements",
+      "Two named economists",
+    ],
+    expectedWordCount: 1000,
+    writerId: "u1",
+    status: "submitted",
+    createdAt: daysAgo(0),
+  },
+];
+
+// ── Editorial checklists (per-task) ────────────────────────────────────────
+
+/** Default item set seeded for any newsroom story. */
+export function defaultChecklistItems(args: {
+  isBusiness: boolean;
+  isSensitive: boolean;
+}) {
+  const { isBusiness, isSensitive } = args;
+  const general = [
+    { key: "g_headline", label: "Headline is accurate", group: "general", required: true },
+    { key: "g_lede", label: "Lede is clear and specific", group: "general", required: true },
+    { key: "g_claims", label: "Claims are supported by sources", group: "general", required: true },
+    { key: "g_sources", label: "Sources are linked or named", group: "general", required: true },
+    { key: "g_quotes", label: "Quotes are attributed", group: "general", required: true },
+    { key: "g_opinion", label: "Opinion is clearly labeled (if applicable)", group: "general", required: false },
+    { key: "g_grammar", label: "Grammar / copy pass complete", group: "general", required: true },
+    { key: "g_final", label: "Ready for final approval", group: "general", required: true },
+  ] as const;
+  const business = [
+    { key: "b_finance_sources", label: "Financial claims have sources", group: "business", required: true },
+    { key: "b_market_date", label: "Market data date is stated", group: "business", required: true },
+    { key: "b_no_advice", label: "No investment-advice language", group: "business", required: true },
+    { key: "b_terms", label: "Terms are explained for teen readers", group: "business", required: true },
+  ] as const;
+  const sensitive = [
+    { key: "s_privacy", label: "Privacy risk reviewed", group: "sensitive", required: true },
+    { key: "s_escalation", label: "Admin / leader escalation completed", group: "sensitive", required: true },
+    { key: "s_language", label: "Language is fair and precise", group: "sensitive", required: true },
+    { key: "s_second_editor", label: "A second editor reviewed", group: "sensitive", required: true },
+  ] as const;
+
+  const items: import("./types").ChecklistItem[] = [
+    ...general.map((i) => ({ ...i, checked: false }) as import("./types").ChecklistItem),
+  ];
+  if (isBusiness)
+    items.push(
+      ...business.map((i) => ({ ...i, checked: false }) as import("./types").ChecklistItem)
+    );
+  if (isSensitive)
+    items.push(
+      ...sensitive.map((i) => ({ ...i, checked: false }) as import("./types").ChecklistItem)
+    );
+  return items;
+}
+
+export const checklists: EditorialChecklist[] = [
+  {
+    taskId: "t1",
+    items: (() => {
+      const items = defaultChecklistItems({ isBusiness: true, isSensitive: false });
+      // Pre-mark a couple to demo progress
+      for (const k of ["g_lede", "b_market_date"]) {
+        const i = items.find((x) => x.key === k);
+        if (i) {
+          i.checked = true;
+          i.checkedById = "u4";
+          i.checkedAt = daysAgo(0);
+        }
+      }
+      return items;
+    })(),
+    updatedAt: daysAgo(0),
+  },
+  {
+    taskId: "t3",
+    items: (() => {
+      const items = defaultChecklistItems({ isBusiness: false, isSensitive: false });
+      for (const k of ["g_headline", "g_lede", "g_claims", "g_sources"]) {
+        const i = items.find((x) => x.key === k);
+        if (i) {
+          i.checked = true;
+          i.checkedById = "u5";
+          i.checkedAt = daysAgo(0);
+        }
+      }
+      return items;
+    })(),
+    updatedAt: daysAgo(0),
+  },
+  {
+    taskId: "t4",
+    items: defaultChecklistItems({ isBusiness: false, isSensitive: true }),
+    updatedAt: daysAgo(1),
+  },
+];
+
+// ── Sensitive flags surfaced for the admin/leader queue. ─────────────────
+export const sensitiveFlags: SensitiveFlag[] = tasks
+  .filter((t) => t.sensitive)
+  .map((t) => t.sensitive!);
 
 export const submissions: Submission[] = [
   {

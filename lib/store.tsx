@@ -8,9 +8,15 @@ import {
   useState,
 } from "react";
 import {
+  checklists as seedChecklists,
   conversations as seedConversations,
+  defaultChecklistItems,
+  issues as seedIssues,
+  issueSlots as seedIssueSlots,
   messages as seedMessages,
   notifications as seedNotifications,
+  pitches as seedPitches,
+  sections as seedSections,
   submissions as seedSubmissions,
   tasks as seedTasks,
   users,
@@ -20,9 +26,15 @@ import {
   type DeadlineReminder,
 } from "./deadline-reminders";
 import type {
+  ChecklistItem,
   Comment,
   Conversation,
+  EditorialChecklist,
   ExtensionRequest,
+  Issue,
+  IssueSlot,
+  IssueSlotPriority,
+  IssueStatus,
   Message,
   ModerationReason,
   ModerationReport,
@@ -30,9 +42,14 @@ import type {
   ModerationStatus,
   Notification,
   NotificationKind,
+  Pitch,
+  PitchStatus,
   Review,
   ReviewDecision,
   Role,
+  Section,
+  SensitiveFlag,
+  SensitiveReason,
   Submission,
   SubmissionFileMeta,
   SubmissionType,
@@ -52,6 +69,12 @@ type StoreValue = {
   messages: Message[];
   notifications: Notification[];
   moderationReports: ModerationReport[];
+  // ── Newsroom entities ────────────────────────────────────────────────────
+  sections: Section[];
+  issues: Issue[];
+  issueSlots: IssueSlot[];
+  pitches: Pitch[];
+  checklists: EditorialChecklist[];
 
   setTaskStatus: (taskId: string, status: TaskStatus) => void;
   createTask: (input: {
@@ -77,6 +100,12 @@ type StoreValue = {
         | "color"
         | "wordCountTarget"
         | "citationsRequired"
+        | "sectionId"
+        | "issueId"
+        | "copyEditorId"
+        | "factCheckerId"
+        | "slug"
+        | "brief"
       >
     >
   ) => void;
@@ -152,6 +181,71 @@ type StoreValue = {
     }
   ) => void;
   hideMessage: (messageId: string) => void;
+
+  // ── Newsroom actions ─────────────────────────────────────────────────────
+  // TODO(supabase): wire each of these to its own table once schema lands
+  // (sections, pitches, issues, issue_slots, editorial_checklists,
+  //  sensitive_flags). Today they all run against in-memory state only.
+  createPitch: (input: {
+    proposedHeadline: string;
+    sectionId: string;
+    angle: string;
+    whyNow: string;
+    proposedSources: string[];
+    expectedWordCount?: number;
+    deadlinePref?: string;
+    writerNote?: string;
+    writerId: string;
+  }) => Pitch;
+  decidePitch: (input: {
+    pitchId: string;
+    decidedById: string;
+    accept: boolean;
+    note?: string;
+  }) => Pitch | null;
+  /** Convert an accepted pitch into a story task (assignment). */
+  convertPitch: (input: {
+    pitchId: string;
+    editorId?: string;
+    deadline: string;
+    leaderId: string;
+    issueId?: string;
+  }) => Task | null;
+
+  /** Add a story to an issue's run sheet. */
+  addIssueSlot: (input: {
+    issueId: string;
+    taskId: string;
+    priority?: IssueSlotPriority;
+  }) => IssueSlot;
+  /** Remove a slot from an issue. */
+  removeIssueSlot: (slotId: string) => void;
+  /** Bump an issue forward (e.g. planning → production → published). */
+  setIssueStatus: (issueId: string, status: IssueStatus) => void;
+
+  /** Update / toggle a checklist item. Auto-seeds the list if missing. */
+  toggleChecklistItem: (input: {
+    taskId: string;
+    key: string;
+    by: string;
+    /** When provided, sets to this value instead of toggling. */
+    checked?: boolean;
+  }) => void;
+
+  /** Raise an editorial sensitive flag on a story. */
+  raiseSensitiveFlag: (input: {
+    taskId: string;
+    raisedById: string;
+    reason: SensitiveReason;
+    notes: string;
+  }) => SensitiveFlag;
+  /** Leader/admin decision on a sensitive flag. */
+  decideSensitiveFlag: (input: {
+    taskId: string;
+    decidedById: string;
+    status: "cleared" | "holding";
+    note?: string;
+  }) => void;
 };
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -175,6 +269,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [moderationReports, setModerationReports] = useState<ModerationReport[]>(
     []
   );
+  const [sectionsState] = useState<Section[]>(seedSections);
+  const [issues, setIssues] = useState<Issue[]>(seedIssues);
+  const [issueSlots, setIssueSlots] = useState<IssueSlot[]>(seedIssueSlots);
+  const [pitches, setPitches] = useState<Pitch[]>(seedPitches);
+  const [checklists, setChecklists] =
+    useState<EditorialChecklist[]>(seedChecklists);
   const [issuedReminderKeys, setIssuedReminderKeys] = useState<Set<string>>(
     () => new Set()
   );
@@ -673,6 +773,330 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [tasks, pushNotification]
   );
 
+  // ── Newsroom: pitches ─────────────────────────────────────────────────────
+  const createPitch = useCallback<StoreValue["createPitch"]>((input) => {
+    const p: Pitch = {
+      id: nextId("p"),
+      proposedHeadline: input.proposedHeadline,
+      sectionId: input.sectionId,
+      angle: input.angle,
+      whyNow: input.whyNow,
+      proposedSources: input.proposedSources,
+      expectedWordCount: input.expectedWordCount,
+      deadlinePref: input.deadlinePref,
+      writerNote: input.writerNote,
+      writerId: input.writerId,
+      status: "submitted",
+      createdAt: new Date().toISOString(),
+    };
+    setPitches((prev) => [p, ...prev]);
+    // Notify every editor/leader so they triage. (In real life we'd target
+    // section editors only — we don't have section-editor mapping yet.)
+    for (const u of usersState.filter(
+      (x) => x.role === "editor" || x.role === "leader"
+    )) {
+      pushNotification({
+        userId: u.id,
+        kind: "task_assigned",
+        title: "New pitch submitted",
+        body: input.proposedHeadline,
+      });
+    }
+    return p;
+  }, [usersState, pushNotification]);
+
+  const decidePitch = useCallback<StoreValue["decidePitch"]>((input) => {
+    let updated: Pitch | null = null;
+    setPitches((prev) =>
+      prev.map((p) => {
+        if (p.id !== input.pitchId) return p;
+        updated = {
+          ...p,
+          status: input.accept ? "accepted" : "declined",
+          editorNote: input.note,
+          decidedById: input.decidedById,
+          decidedAt: new Date().toISOString(),
+        };
+        return updated;
+      })
+    );
+    if (updated) {
+      const u = updated as Pitch;
+      pushNotification({
+        userId: u.writerId,
+        kind: "review_decision",
+        title: input.accept
+          ? `Pitch accepted: ${u.proposedHeadline}`
+          : `Pitch declined: ${u.proposedHeadline}`,
+        body: input.note,
+      });
+    }
+    return updated;
+  }, [pushNotification]);
+
+  const convertPitch = useCallback<StoreValue["convertPitch"]>((input) => {
+    const pitch = pitches.find((p) => p.id === input.pitchId);
+    if (!pitch || pitch.status === "converted") return null;
+    const t: Task = {
+      id: nextId("t"),
+      title: pitch.proposedHeadline,
+      instructions: [
+        pitch.angle && `Angle: ${pitch.angle}`,
+        pitch.whyNow && `Why now: ${pitch.whyNow}`,
+        pitch.proposedSources.length
+          ? `Proposed sources:\n- ${pitch.proposedSources.join("\n- ")}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+      writerId: pitch.writerId,
+      editorId: input.editorId,
+      deadline: input.deadline,
+      status: "not_started",
+      color: "green",
+      createdAt: new Date().toISOString(),
+      wordCountTarget: pitch.expectedWordCount,
+      sectionId: pitch.sectionId,
+      pitchId: pitch.id,
+      issueId: input.issueId,
+      brief: {
+        angle: pitch.angle,
+        requiredSources: pitch.proposedSources,
+        publishingNotes: pitch.writerNote,
+      },
+    };
+    setTasks((prev) => [t, ...prev]);
+    setPitches((prev) =>
+      prev.map((p) =>
+        p.id === pitch.id
+          ? { ...p, status: "converted", taskId: t.id, decidedById: input.leaderId, decidedAt: new Date().toISOString() }
+          : p
+      )
+    );
+    if (input.issueId) {
+      setIssueSlots((prev) => [
+        ...prev,
+        {
+          id: nextId("slot"),
+          issueId: input.issueId!,
+          taskId: t.id,
+          priority: "nice_to_run",
+        },
+      ]);
+    }
+    pushNotification({
+      userId: pitch.writerId,
+      kind: "task_assigned",
+      title: `Assigned: ${pitch.proposedHeadline}`,
+      body: `Due ${new Date(input.deadline).toLocaleDateString()}`,
+    });
+    if (input.editorId) {
+      pushNotification({
+        userId: input.editorId,
+        kind: "task_assigned",
+        title: `Editing: ${pitch.proposedHeadline}`,
+      });
+    }
+    return t;
+  }, [pitches, pushNotification]);
+
+  // ── Newsroom: issues ──────────────────────────────────────────────────────
+  const addIssueSlot = useCallback<StoreValue["addIssueSlot"]>((input) => {
+    const s: IssueSlot = {
+      id: nextId("slot"),
+      issueId: input.issueId,
+      taskId: input.taskId,
+      priority: input.priority ?? "nice_to_run",
+    };
+    setIssueSlots((prev) => [...prev, s]);
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === input.taskId ? { ...t, issueId: input.issueId } : t
+      )
+    );
+    return s;
+  }, []);
+
+  const removeIssueSlot = useCallback<StoreValue["removeIssueSlot"]>(
+    (slotId) => {
+      setIssueSlots((prev) => {
+        const slot = prev.find((s) => s.id === slotId);
+        if (slot) {
+          // Detach the issue from the task too so it doesn't ghost-link.
+          setTasks((tprev) =>
+            tprev.map((t) =>
+              t.id === slot.taskId && t.issueId === slot.issueId
+                ? { ...t, issueId: undefined }
+                : t
+            )
+          );
+        }
+        return prev.filter((s) => s.id !== slotId);
+      });
+    },
+    []
+  );
+
+  const setIssueStatus = useCallback<StoreValue["setIssueStatus"]>(
+    (issueId, status) => {
+      setIssues((prev) =>
+        prev.map((i) => (i.id === issueId ? { ...i, status } : i))
+      );
+      // Publishing the issue advances every slotted, ready story to complete
+      // (which derives to "published" via the stage helper).
+      if (status === "published") {
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.issueId === issueId && t.status !== "complete"
+              ? { ...t, status: "complete" }
+              : t
+          )
+        );
+      }
+    },
+    []
+  );
+
+  // ── Newsroom: editorial checklists ───────────────────────────────────────
+  const toggleChecklistItem = useCallback<StoreValue["toggleChecklistItem"]>(
+    (input) => {
+      setChecklists((prev) => {
+        let list = prev.find((c) => c.taskId === input.taskId);
+        let nextList: EditorialChecklist[];
+        const now = new Date().toISOString();
+        if (!list) {
+          // Seed a default list lazily so toggles "just work" on any task.
+          const task = tasks.find((t) => t.id === input.taskId);
+          const isBusiness =
+            task?.sectionId === "sec-business" ||
+            task?.sectionId === "sec-markets";
+          const isSensitive = !!task?.sensitive;
+          const seeded: EditorialChecklist = {
+            taskId: input.taskId,
+            items: defaultChecklistItems({ isBusiness, isSensitive }),
+            updatedAt: now,
+          };
+          list = seeded;
+          nextList = [...prev, seeded];
+        } else {
+          nextList = prev.slice();
+        }
+        const idx = nextList.findIndex((c) => c.taskId === input.taskId);
+        const items = nextList[idx].items.map((it): ChecklistItem => {
+          if (it.key !== input.key) return it;
+          const checked =
+            input.checked !== undefined ? input.checked : !it.checked;
+          return {
+            ...it,
+            checked,
+            checkedById: checked ? input.by : undefined,
+            checkedAt: checked ? now : undefined,
+          };
+        });
+        nextList[idx] = { ...nextList[idx], items, updatedAt: now };
+        return nextList;
+      });
+    },
+    [tasks]
+  );
+
+  // ── Newsroom: sensitive flags ────────────────────────────────────────────
+  const raiseSensitiveFlag = useCallback<StoreValue["raiseSensitiveFlag"]>(
+    (input) => {
+      const flag: SensitiveFlag = {
+        id: nextId("sf"),
+        taskId: input.taskId,
+        reason: input.reason,
+        notes: input.notes,
+        status: "open",
+        raisedById: input.raisedById,
+        raisedAt: new Date().toISOString(),
+      };
+      setTasks((prev) =>
+        prev.map((t) => (t.id === input.taskId ? { ...t, sensitive: flag } : t))
+      );
+      // Auto-add the sensitive checklist group if missing.
+      setChecklists((prev) => {
+        const existing = prev.find((c) => c.taskId === input.taskId);
+        if (existing && existing.items.some((i) => i.group === "sensitive")) {
+          return prev;
+        }
+        const sensitiveItems = defaultChecklistItems({
+          isBusiness: false,
+          isSensitive: true,
+        }).filter((i) => i.group === "sensitive");
+        if (existing) {
+          return prev.map((c) =>
+            c.taskId === input.taskId
+              ? {
+                  ...c,
+                  items: [...c.items, ...sensitiveItems],
+                  updatedAt: new Date().toISOString(),
+                }
+              : c
+          );
+        }
+        return [
+          ...prev,
+          {
+            taskId: input.taskId,
+            items: defaultChecklistItems({
+              isBusiness: false,
+              isSensitive: true,
+            }),
+            updatedAt: new Date().toISOString(),
+          },
+        ];
+      });
+      // Notify leaders + admins for triage.
+      for (const u of usersState.filter(
+        (x) => x.role === "leader" || x.role === "admin"
+      )) {
+        pushNotification({
+          userId: u.id,
+          kind: "review_decision",
+          title: "Sensitive story flagged",
+          body: input.notes.slice(0, 120),
+        });
+      }
+      return flag;
+    },
+    [usersState, pushNotification]
+  );
+
+  const decideSensitiveFlag = useCallback<StoreValue["decideSensitiveFlag"]>(
+    (input) => {
+      setTasks((prev) =>
+        prev.map((t) => {
+          if (t.id !== input.taskId || !t.sensitive) return t;
+          return {
+            ...t,
+            sensitive: {
+              ...t.sensitive,
+              status: input.status,
+              decidedById: input.decidedById,
+              decidedAt: new Date().toISOString(),
+              decisionNote: input.note,
+            },
+          };
+        })
+      );
+      const task = tasks.find((t) => t.id === input.taskId);
+      if (task) {
+        pushNotification({
+          userId: task.writerId,
+          kind: "review_decision",
+          title:
+            input.status === "cleared"
+              ? `Sensitive review cleared: ${task.title}`
+              : `Sensitive review on hold: ${task.title}`,
+          body: input.note,
+        });
+      }
+    },
+    [tasks, pushNotification]
+  );
+
   const markAllRead = useCallback((userId: string) => {
     setNotifications((prev) =>
       prev.map((n) => (n.userId === userId ? { ...n, read: true } : n))
@@ -690,6 +1114,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       messages,
       notifications,
       moderationReports,
+      sections: sectionsState,
+      issues,
+      issueSlots,
+      pitches,
+      checklists,
       setTaskStatus,
       createTask,
       updateTask,
@@ -712,6 +1141,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       createModerationReport,
       updateModerationReport,
       hideMessage,
+      createPitch,
+      decidePitch,
+      convertPitch,
+      addIssueSlot,
+      removeIssueSlot,
+      setIssueStatus,
+      toggleChecklistItem,
+      raiseSensitiveFlag,
+      decideSensitiveFlag,
     }),
     [
       usersState,
@@ -723,6 +1161,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       messages,
       notifications,
       moderationReports,
+      sectionsState,
+      issues,
+      issueSlots,
+      pitches,
+      checklists,
       setTaskStatus,
       createTask,
       updateTask,
@@ -745,6 +1188,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       createModerationReport,
       updateModerationReport,
       hideMessage,
+      createPitch,
+      decidePitch,
+      convertPitch,
+      addIssueSlot,
+      removeIssueSlot,
+      setIssueStatus,
+      toggleChecklistItem,
+      raiseSensitiveFlag,
+      decideSensitiveFlag,
     ]
   );
 

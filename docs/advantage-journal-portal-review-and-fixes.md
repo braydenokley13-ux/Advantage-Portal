@@ -1,8 +1,10 @@
 # Advantage Journal Portal — Review & Fixes
 
+> **Brand note:** "The Advantage Journal" is the name of a student newspaper / online publication (theadvantagejournal.org). This portal is the newsroom operating system that backs that publication — pitches, assignments, copy desk, fact-checking, issue planning, sensitive-story escalation. It is **not** a personal-finance journal or diary product. Uses of the word "journal" in this document refer to the publication, not a workflow style.
+
 This document captures the architect-led review pass, the fixes implemented in this round, and the open product questions that need decisions before the next iteration.
 
-The portal is a teen-focused journal platform with four roles (Admin, Writer, Editor, Leader). The MVP runs entirely against an in-memory store with a typed `ApiClient` adapter, so the UI is already wired to swap to a real backend without component changes.
+The portal is a teen-focused student-newsroom platform with four roles (Admin, Writer, Editor, Leader). The MVP runs entirely against an in-memory store with a typed `ApiClient` adapter, so the UI is already wired to swap to a real backend without component changes. See `docs/newsroom-workflow-implementation-plan.md` for the newsroom-specific data model and workflow that layers on top of the base task system.
 
 ---
 

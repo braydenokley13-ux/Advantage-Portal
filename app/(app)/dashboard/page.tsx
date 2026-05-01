@@ -18,6 +18,9 @@ import {
   Send,
   Eye,
   Sparkles,
+  Lightbulb,
+  ShieldAlert,
+  Newspaper,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,7 +42,8 @@ import { useStore } from "@/lib/store";
 import { canCreateTask } from "@/lib/permissions";
 import { initials } from "@/lib/utils";
 import { isPast, isWithinInterval, addDays, format } from "date-fns";
-import type { Task } from "@/lib/types";
+import type { Pitch, Task } from "@/lib/types";
+import { deriveStoryStage } from "@/lib/newsroom-stage";
 
 export default function DashboardPage() {
   const { user, role } = useRole();
@@ -48,7 +52,7 @@ export default function DashboardPage() {
   const { data: notificationsData } = useNotifications();
   const { data: usersData } = useUsers();
   const { data: messagesData } = useMessages();
-  const { tasks: allTasks } = useStore();
+  const { tasks: allTasks, pitches, issues, issueSlots, checklists } = useStore();
   const notifications = notificationsData ?? [];
   const users = usersData ?? [];
   const messages = messagesData ?? [];
@@ -172,13 +176,31 @@ export default function DashboardPage() {
 
       {/* Role-specific quick-action / contextual rail. */}
       {role === "writer" && (
-        <WriterNextActions tasks={myTasks} onOpen={setOpenTaskId} />
+        <>
+          <WriterNextActions tasks={myTasks} onOpen={setOpenTaskId} />
+          <WriterPitchesStrip pitches={pitches.filter((p) => p.writerId === user.id)} />
+        </>
       )}
       {role === "editor" && (
-        <EditorReviewQueue tasks={myTasks} onOpen={setOpenTaskId} />
+        <>
+          <EditorReviewQueue tasks={myTasks} onOpen={setOpenTaskId} />
+          <EditorNewsroomPanel pitches={pitches} tasks={allTasks} userId={user.id} />
+        </>
       )}
       {role === "leader" && (
-        <LeaderOpsPanel tasks={allTasks} users={users} messages={messages} />
+        <>
+          <LeaderIssueReadiness
+            issues={issues}
+            issueSlots={issueSlots}
+            tasks={allTasks}
+            checklists={checklists}
+          />
+          <LeaderSensitiveQueue tasks={allTasks} />
+          <LeaderOpsPanel tasks={allTasks} users={users} messages={messages} />
+        </>
+      )}
+      {role === "admin" && (
+        <LeaderSensitiveQueue tasks={allTasks} />
       )}
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -715,6 +737,206 @@ function AdminStats({
       {/* messages used to keep the prop reachable for future breakdowns */}
       <span className="hidden">{messages.length}</span>
     </>
+  );
+}
+
+// ── Writer pitches strip ──────────────────────────────────────────────────
+function WriterPitchesStrip({ pitches }: { pitches: Pitch[] }) {
+  if (pitches.length === 0) return null;
+  const open = pitches.filter((p) => p.status === "submitted").length;
+  const accepted = pitches.filter((p) => p.status === "accepted").length;
+  const declined = pitches.filter((p) => p.status === "declined").length;
+  const converted = pitches.filter((p) => p.status === "converted").length;
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Lightbulb className="h-4 w-4 text-muted-foreground" /> My pitches
+        </CardTitle>
+        <Button variant="ghost" size="sm" asChild>
+          <Link href="/pitches">Open pitches</Link>
+        </Button>
+      </CardHeader>
+      <CardContent className="px-5 pb-5 grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+        <PitchTile label="Awaiting decision" value={open} tone="warning" />
+        <PitchTile label="Accepted" value={accepted} tone="success" />
+        <PitchTile label="Assigned" value={converted} tone="default" />
+        <PitchTile label="Declined" value={declined} tone="muted" />
+      </CardContent>
+    </Card>
+  );
+}
+
+function PitchTile({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "default" | "warning" | "success" | "muted";
+}) {
+  const cls =
+    tone === "warning"
+      ? "bg-amber-50 border-amber-200"
+      : tone === "success"
+        ? "bg-emerald-50 border-emerald-200"
+        : tone === "muted"
+          ? "bg-secondary/50 border-border"
+          : "bg-card border-border";
+  return (
+    <div className={`rounded-md border p-3 ${cls}`}>
+      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <p className="text-2xl font-semibold tabular-nums mt-0.5">{value}</p>
+    </div>
+  );
+}
+
+// ── Editor newsroom panel ────────────────────────────────────────────────
+function EditorNewsroomPanel({
+  pitches,
+  tasks,
+  userId,
+}: {
+  pitches: Pitch[];
+  tasks: Task[];
+  userId: string;
+}) {
+  const queue = pitches.filter((p) => p.status === "submitted").length;
+  const copyDesk = tasks.filter(
+    (t) => t.copyEditorId === userId && t.status === "submitted"
+  ).length;
+  const factDesk = tasks.filter(
+    (t) => t.factCheckerId === userId && t.status === "submitted"
+  ).length;
+  return (
+    <div className="grid gap-4 md:grid-cols-3">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Lightbulb className="h-4 w-4 text-muted-foreground" /> Pitch queue
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-5 pb-5">
+          <p className="text-3xl font-semibold tabular-nums">{queue}</p>
+          <p className="text-xs text-muted-foreground">awaiting an editorial decision</p>
+          <Button variant="ghost" size="sm" className="mt-2 -ml-2" asChild>
+            <Link href="/pitches">Open queue →</Link>
+          </Button>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Copy desk</CardTitle>
+        </CardHeader>
+        <CardContent className="px-5 pb-5">
+          <p className="text-3xl font-semibold tabular-nums">{copyDesk}</p>
+          <p className="text-xs text-muted-foreground">stories where you're copy editor</p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Fact desk</CardTitle>
+        </CardHeader>
+        <CardContent className="px-5 pb-5">
+          <p className="text-3xl font-semibold tabular-nums">{factDesk}</p>
+          <p className="text-xs text-muted-foreground">stories where you're fact-checker</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── Leader issue readiness card ──────────────────────────────────────────
+function LeaderIssueReadiness({
+  issues,
+  issueSlots,
+  tasks,
+  checklists,
+}: {
+  issues: import("@/lib/types").Issue[];
+  issueSlots: import("@/lib/types").IssueSlot[];
+  tasks: Task[];
+  checklists: import("@/lib/types").EditorialChecklist[];
+}) {
+  const active = issues.find((i) => i.status !== "published") ?? issues[0];
+  if (!active) return null;
+  const slots = issueSlots.filter((s) => s.issueId === active.id);
+  const stages = slots
+    .map((s) => tasks.find((t) => t.id === s.taskId))
+    .filter((t): t is Task => !!t)
+    .map((t) => {
+      const cl = checklists.find((c) => c.taskId === t.id);
+      return { task: t, stage: deriveStoryStage({ task: t, checklist: cl, issue: active }).stage };
+    });
+  const ready = stages.filter(
+    (x) => x.stage === "publish_ready" || x.stage === "published"
+  ).length;
+  const total = stages.length || 1;
+  const readiness = Math.round((ready / total) * 100);
+  const blocked = stages.filter(
+    (x) => x.task.sensitive?.status === "open" || x.task.sensitive?.status === "holding"
+  ).length;
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Newspaper className="h-4 w-4 text-muted-foreground" /> Current issue —{" "}
+          {active.name}
+        </CardTitle>
+        <Button variant="ghost" size="sm" asChild>
+          <Link href="/issues">Open issues</Link>
+        </Button>
+      </CardHeader>
+      <CardContent className="px-5 pb-5 space-y-3">
+        <div className="flex items-end gap-4">
+          <p className="text-3xl font-semibold tabular-nums">{readiness}%</p>
+          <p className="text-xs text-muted-foreground pb-1.5">
+            {ready} of {stages.length} stories publish-ready
+          </p>
+        </div>
+        <div className="h-2 rounded-full bg-secondary overflow-hidden">
+          <div
+            className="h-full bg-emerald-500"
+            style={{ width: `${readiness}%` }}
+          />
+        </div>
+        <div className="flex flex-wrap gap-2 pt-1">
+          <Badge variant="secondary">
+            Publish target {format(new Date(active.publishDate), "MMM d")}
+          </Badge>
+          <Badge variant={blocked > 0 ? "danger" : "secondary"}>
+            {blocked} sensitive blocker{blocked === 1 ? "" : "s"}
+          </Badge>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Sensitive escalation overview (leader + admin) ──────────────────────
+function LeaderSensitiveQueue({ tasks }: { tasks: Task[] }) {
+  const flagged = tasks.filter((t) => t.sensitive);
+  const open = flagged.filter((t) => t.sensitive?.status === "open");
+  const holding = flagged.filter((t) => t.sensitive?.status === "holding");
+  const cleared = flagged.filter((t) => t.sensitive?.status === "cleared");
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <ShieldAlert className="h-4 w-4 text-muted-foreground" /> Sensitive
+          escalations
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="px-5 pb-5 grid grid-cols-3 gap-3 text-sm">
+        <PitchTile label="Open" value={open.length} tone="warning" />
+        <PitchTile label="Holding" value={holding.length} tone="muted" />
+        <PitchTile label="Cleared" value={cleared.length} tone="success" />
+      </CardContent>
+    </Card>
   );
 }
 
