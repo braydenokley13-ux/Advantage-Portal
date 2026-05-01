@@ -26,6 +26,8 @@ export function InlineMarkdownViewer({
   const [activeLine, setActiveLine] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
   const [collapsedLines, setCollapsedLines] = useState<Set<number>>(new Set());
+  // Tracks lines the user has explicitly expanded (overrides the allResolved default-collapsed state)
+  const [expandedLines, setExpandedLines] = useState<Set<number>>(new Set());
 
   const allowed = canComment({ task, user });
 
@@ -58,12 +60,26 @@ export function InlineMarkdownViewer({
   }, [comments, submission.id]);
 
   function toggleLineCollapsed(line: number) {
-    setCollapsedLines((prev) => {
-      const next = new Set(prev);
-      if (next.has(line)) next.delete(line);
-      else next.add(line);
-      return next;
-    });
+    const lineComments = byLine.get(line) ?? [];
+    const allRes =
+      lineComments.length > 0 && lineComments.every((c) => c.resolved);
+    const currentlyCollapsed = allRes
+      ? !expandedLines.has(line)
+      : collapsedLines.has(line);
+
+    if (currentlyCollapsed) {
+      if (allRes) {
+        setExpandedLines((p) => { const n = new Set(p); n.add(line); return n; });
+      } else {
+        setCollapsedLines((p) => { const n = new Set(p); n.delete(line); return n; });
+      }
+    } else {
+      if (allRes) {
+        setExpandedLines((p) => { const n = new Set(p); n.delete(line); return n; });
+      } else {
+        setCollapsedLines((p) => { const n = new Set(p); n.add(line); return n; });
+      }
+    }
   }
 
   function send(line: number) {
@@ -102,7 +118,11 @@ export function InlineMarkdownViewer({
           const allResolved =
             lineComments.length > 0 &&
             lineComments.every((c) => c.resolved);
-          const collapsed = collapsedLines.has(lineNo) || allResolved;
+          // Resolved threads default to collapsed, but user can explicitly expand them.
+          // Unresolved threads default to open, but user can explicitly collapse them.
+          const collapsed = allResolved
+            ? !expandedLines.has(lineNo)
+            : collapsedLines.has(lineNo);
           const hasComments = lineComments.length > 0;
           const isActive = activeLine === lineNo;
 
