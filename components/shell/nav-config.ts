@@ -10,6 +10,8 @@ import {
   ClipboardList,
   ShieldCheck,
   ShieldAlert,
+  Lightbulb,
+  Newspaper,
   type LucideIcon,
 } from "lucide-react";
 import type { Role } from "@/lib/types";
@@ -39,6 +41,18 @@ export const NAV_ITEMS: NavItem[] = [
     label: "My Tasks",
     icon: ClipboardList,
     roles: ["writer"],
+  },
+  {
+    href: "/pitches",
+    label: "Pitches",
+    icon: Lightbulb,
+    roles: ["writer", "editor", "leader", "admin"],
+  },
+  {
+    href: "/issues",
+    label: "Issues",
+    icon: Newspaper,
+    roles: ["editor", "leader", "admin"],
   },
   {
     href: "/reviews",
