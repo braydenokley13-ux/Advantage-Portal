@@ -37,13 +37,27 @@ const ROLE_TONE: Record<Role, "default" | "secondary" | "warning" | "danger"> = 
 
 const ROLES: Role[] = ["writer", "editor", "leader", "admin"];
 
-export function UserList({ canManage }: { canManage: boolean }) {
-  const { users, updateUserRole, setUserActive } = useStore();
+export function UserList({
+  canManage,
+  showWorkload = false,
+}: {
+  canManage: boolean;
+  /** Render a workload column with each member's open task count. */
+  showWorkload?: boolean;
+}) {
+  const { users, tasks, updateUserRole, setUserActive } = useStore();
   const { user: me } = useRole();
   const [filter, setFilter] = useState("");
   const [roleFilter, setRoleFilter] = useState<Role | "all">("all");
   const [showInactive, setShowInactive] = useState(true);
   const [openProfile, setOpenProfile] = useState<User | null>(null);
+
+  const workloadFor = (userId: string) =>
+    tasks.filter(
+      (t) =>
+        (t.writerId === userId || t.editorId === userId) &&
+        t.status !== "complete"
+    ).length;
 
   const filtered = useMemo(() => {
     return users.filter((u) => {
@@ -105,6 +119,11 @@ export function UserList({ canManage }: { canManage: boolean }) {
               <th className="text-left px-4 py-2 font-medium hidden md:table-cell">
                 Status
               </th>
+              {showWorkload && (
+                <th className="text-left px-4 py-2 font-medium hidden md:table-cell">
+                  Workload
+                </th>
+              )}
               <th className="px-4 py-2 w-12" aria-label="Actions" />
             </tr>
           </thead>
@@ -168,6 +187,27 @@ export function UserList({ canManage }: { canManage: boolean }) {
                       </Badge>
                     )}
                   </td>
+                  {showWorkload && (
+                    <td className="px-4 py-3 hidden md:table-cell">
+                      {(() => {
+                        const open = workloadFor(u.id);
+                        return (
+                          <Badge
+                            variant={
+                              open === 0
+                                ? "secondary"
+                                : open > 4
+                                  ? "warning"
+                                  : "default"
+                            }
+                            className="tabular-nums"
+                          >
+                            {open} open
+                          </Badge>
+                        );
+                      })()}
+                    </td>
+                  )}
                   <td className="px-4 py-3 text-right">
                     {canManage && u.id !== me.id ? (
                       <DropdownMenu>
@@ -217,7 +257,7 @@ export function UserList({ canManage }: { canManage: boolean }) {
             {filtered.length === 0 && (
               <tr>
                 <td
-                  colSpan={4}
+                  colSpan={showWorkload ? 5 : 4}
                   className="px-4 py-12 text-center text-sm text-muted-foreground"
                 >
                   No members match these filters.

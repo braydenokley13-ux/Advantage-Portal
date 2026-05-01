@@ -1,16 +1,33 @@
 "use client";
 
-import { ShieldCheck, Users, Lock } from "lucide-react";
+import { useMemo } from "react";
+import {
+  ShieldCheck,
+  Users,
+  Lock,
+  ScrollText,
+  Settings2,
+  KeyRound,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/page-header";
 import { UserList } from "@/components/team/user-list";
 import { useRole } from "@/lib/role-context";
 import { canManageUsers } from "@/lib/permissions";
 import { useStore } from "@/lib/store";
+import { format, formatDistanceToNowStrict } from "date-fns";
+import type { Role } from "@/lib/types";
 
+/**
+ * Admin is the system-controls page: user management, permissions matrix,
+ * audit-log mock, and global toggles. It intentionally does NOT duplicate
+ * the Team directory's purpose — the directory lives at /team and is
+ * read-only. Microcopy below makes that distinction explicit.
+ */
 export default function AdminPage() {
   const { role } = useRole();
-  const { users, tasks } = useStore();
+  const { users, tasks, notifications } = useStore();
 
   if (!canManageUsers(role)) {
     return (
@@ -22,7 +39,8 @@ export default function AdminPage() {
             </div>
             <p className="text-sm font-semibold">Admin access required</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Only admins can change roles or manage user accounts.
+              Only admins can change roles or manage user accounts. The
+              Team page has the read-only directory.
             </p>
           </CardContent>
         </Card>
@@ -35,12 +53,46 @@ export default function AdminPage() {
   const admins = users.filter((u) => u.role === "admin").length;
   const openTasks = tasks.filter((t) => t.status !== "complete").length;
 
+  // Synthesize a tiny audit-log feed from the in-memory event stream so
+  // the page demonstrates the shape of a real audit-log page.
+  const auditEvents = useMemo(
+    () =>
+      notifications
+        .slice(0, 8)
+        .map((n) => ({
+          id: n.id,
+          when: n.createdAt,
+          actor: users.find((u) => u.id === n.userId)?.name ?? "system",
+          action: n.title,
+          kind: n.kind,
+        })),
+    [notifications, users]
+  );
+
   return (
     <div className="container py-6 md:py-8 space-y-6">
       <PageHeader
         title="Admin"
-        description="System-wide controls. Changes here take effect immediately."
+        description="System controls. Changes here take effect immediately and apply portal-wide."
       />
+
+      <Card>
+        <CardContent className="p-4 flex items-start gap-3">
+          <div className="mt-0.5 h-8 w-8 rounded-md bg-secondary flex items-center justify-center shrink-0">
+            <Settings2 className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div className="text-xs text-muted-foreground leading-relaxed">
+            <p className="text-foreground font-medium">
+              Admin vs Team — what's the difference?
+            </p>
+            <p className="mt-0.5">
+              Team is the read-only directory everyone can browse. Admin is
+              where you change roles, deactivate accounts, review system
+              activity, and manage permissions.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <SmallStat icon={Users} label="Total users" value={users.length} />
@@ -64,12 +116,63 @@ export default function AdminPage() {
         />
       </div>
 
+      <PermissionsMatrix />
+
       <Card>
         <CardHeader>
-          <CardTitle>User management</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Users className="h-4 w-4 text-muted-foreground" /> User management
+          </CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">
+            Change a user's role or deactivate their account. Deactivation
+            ends their session immediately.
+          </p>
         </CardHeader>
         <CardContent className="p-0 pb-4 px-4 space-y-3">
-          <UserList canManage={true} />
+          <UserList canManage={true} showWorkload={true} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <ScrollText className="h-4 w-4 text-muted-foreground" /> Recent
+            activity
+          </CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">
+            Mock audit log derived from the notification stream. A real
+            backend would pipe authentication events, role changes, and
+            content moderation actions here.
+          </p>
+        </CardHeader>
+        <CardContent className="p-0">
+          {auditEvents.length === 0 ? (
+            <p className="px-4 py-8 text-center text-xs text-muted-foreground">
+              No activity yet.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {auditEvents.map((e) => (
+                <li
+                  key={e.id}
+                  className="px-4 py-3 flex items-center justify-between text-sm"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{e.action}</p>
+                    <p className="text-xs text-muted-foreground capitalize mt-0.5">
+                      {e.kind.replace("_", " ")} · {e.actor}
+                    </p>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground shrink-0">
+                    {formatDistanceToNowStrict(new Date(e.when), {
+                      addSuffix: true,
+                    })}{" "}
+                    · {format(new Date(e.when), "MMM d")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
 
@@ -77,6 +180,98 @@ export default function AdminPage() {
         {openTasks} open task{openTasks === 1 ? "" : "s"} across the team.
       </p>
     </div>
+  );
+}
+
+function PermissionsMatrix() {
+  // Single source of truth for the role/permission grid. Mirrors the
+  // helpers in lib/permissions.ts.
+  const rows: { capability: string; roles: Record<Role, boolean> }[] = [
+    {
+      capability: "View dashboard, board, calendar, messages",
+      roles: { writer: true, editor: true, leader: true, admin: true },
+    },
+    {
+      capability: "Create / edit tasks",
+      roles: { writer: false, editor: false, leader: true, admin: true },
+    },
+    {
+      capability: "Submit drafts",
+      roles: { writer: true, editor: false, leader: false, admin: false },
+    },
+    {
+      capability: "Review submissions",
+      roles: { writer: false, editor: true, leader: true, admin: true },
+    },
+    {
+      capability: "Pin announcements",
+      roles: { writer: false, editor: false, leader: true, admin: true },
+    },
+    {
+      capability: "Approve extension requests",
+      roles: { writer: false, editor: false, leader: true, admin: true },
+    },
+    {
+      capability: "Manage users (roles, deactivation)",
+      roles: { writer: false, editor: false, leader: false, admin: true },
+    },
+    {
+      capability: "Admins-only chat",
+      roles: { writer: false, editor: false, leader: true, admin: true },
+    },
+  ];
+
+  const roleOrder: Role[] = ["writer", "editor", "leader", "admin"];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <KeyRound className="h-4 w-4 text-muted-foreground" /> Roles &
+          permissions
+        </CardTitle>
+        <p className="text-xs text-muted-foreground mt-1">
+          Reference matrix. Permissions are enforced server-side once the
+          backend is wired in; today they're enforced by the in-memory
+          permission helpers.
+        </p>
+      </CardHeader>
+      <CardContent className="p-0 overflow-x-auto">
+        <table className="w-full text-sm min-w-[560px]">
+          <thead className="bg-secondary/40 text-[11px] uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <th className="text-left px-4 py-2 font-medium">Capability</th>
+              {roleOrder.map((r) => (
+                <th
+                  key={r}
+                  className="px-4 py-2 font-medium text-center capitalize"
+                >
+                  {r}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {rows.map((row) => (
+              <tr key={row.capability}>
+                <td className="px-4 py-2.5 text-xs">{row.capability}</td>
+                {roleOrder.map((r) => (
+                  <td key={r} className="px-4 py-2.5 text-center">
+                    {row.roles[r] ? (
+                      <Badge variant="success" className="h-5 px-1.5">
+                        Yes
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </CardContent>
+    </Card>
   );
 }
 
