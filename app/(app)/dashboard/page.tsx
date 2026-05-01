@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   ClipboardList,
   Clock,
@@ -174,7 +175,7 @@ export default function DashboardPage() {
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle>Upcoming deadlines</CardTitle>
             <Button variant="ghost" size="sm" asChild>
-              <a href="/board">View board</a>
+              <Link href="/board">View board</Link>
             </Button>
           </CardHeader>
           <CardContent className="p-0">
