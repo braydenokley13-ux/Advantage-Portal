@@ -5,8 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { initials, cn } from "@/lib/utils";
 import { useStore } from "@/lib/store";
 import { STATUS_LABELS } from "@/lib/kanban-rules";
+import { STATUS_DEFINITIONS } from "@/lib/status";
 import type { Task } from "@/lib/types";
-import { Calendar } from "lucide-react";
+import { BookOpen, Calendar, Clock } from "lucide-react";
 import { format, isPast, formatDistanceToNowStrict } from "date-fns";
 
 const STATUS_TONE: Record<
@@ -59,9 +60,22 @@ export function TaskRow({
               : format(due, "MMM d")}
           </span>
           {writer && <span>· {writer.name}</span>}
+          {task.citationsRequired && (
+            <span className="inline-flex items-center gap-0.5">
+              · <BookOpen className="h-3 w-3" /> citations
+            </span>
+          )}
+          {task.extensionRequest?.status === "pending" && (
+            <span className="inline-flex items-center gap-0.5 text-amber-700">
+              · <Clock className="h-3 w-3" /> extension pending
+            </span>
+          )}
         </div>
       </div>
-      <Badge variant={STATUS_TONE[task.status]}>
+      <Badge
+        variant={STATUS_TONE[task.status]}
+        title={STATUS_DEFINITIONS[task.status].description}
+      >
         {STATUS_LABELS[task.status]}
       </Badge>
       {editor && (

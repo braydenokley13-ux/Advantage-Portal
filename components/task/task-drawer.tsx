@@ -30,6 +30,7 @@ import { useStore } from "@/lib/store";
 import { useRole } from "@/lib/role-context";
 import { canEditTask, canReview, canSubmit } from "@/lib/permissions";
 import { STATUS_LABELS } from "@/lib/kanban-rules";
+import { STATUS_DEFINITIONS } from "@/lib/status";
 import { initials, cn } from "@/lib/utils";
 import { format, formatDistanceToNowStrict, isPast } from "date-fns";
 import type { Submission, Task } from "@/lib/types";
@@ -174,13 +175,74 @@ export function TaskDrawer({
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="brief" className="mt-4 space-y-3">
-              <h4 className="text-xs uppercase tracking-wide text-muted-foreground font-medium">
-                Instructions
-              </h4>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                {task.instructions}
-              </p>
+            <TabsContent value="brief" className="mt-4 space-y-4">
+              <div className="rounded-lg border border-border bg-secondary/40 p-3 space-y-1">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
+                  What this status means
+                </p>
+                <p className="text-sm leading-snug">
+                  {STATUS_DEFINITIONS[task.status].description}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Next:</span>{" "}
+                  {STATUS_DEFINITIONS[task.status].nextAction[
+                    user.role === "admin" ? "leader" : user.role
+                  ]}
+                </p>
+              </div>
+
+              {(task.wordCountTarget ||
+                task.citationsRequired ||
+                task.extensionRequest) && (
+                <div className="grid grid-cols-2 gap-2">
+                  {task.wordCountTarget && (
+                    <div className="rounded-md border border-border bg-card p-2.5">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Word count target
+                      </p>
+                      <p className="text-sm font-medium mt-0.5">
+                        {task.wordCountTarget.toLocaleString()} words
+                      </p>
+                    </div>
+                  )}
+                  {task.citationsRequired && (
+                    <div className="rounded-md border border-border bg-card p-2.5">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Citations
+                      </p>
+                      <p className="text-sm font-medium mt-0.5">
+                        Required for sources
+                      </p>
+                    </div>
+                  )}
+                  {task.extensionRequest && (
+                    <div className="rounded-md border border-border bg-card p-2.5 col-span-2">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Extension request — {task.extensionRequest.status}
+                      </p>
+                      <p className="text-xs mt-0.5">
+                        New deadline:{" "}
+                        {format(
+                          new Date(task.extensionRequest.newDeadline),
+                          "MMM d, yyyy"
+                        )}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {task.extensionRequest.reason}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div>
+                <h4 className="text-xs uppercase tracking-wide text-muted-foreground font-medium">
+                  Instructions
+                </h4>
+                <p className="text-sm leading-relaxed whitespace-pre-wrap mt-2">
+                  {task.instructions}
+                </p>
+              </div>
             </TabsContent>
 
             <TabsContent value="submit" className="mt-4 space-y-5">

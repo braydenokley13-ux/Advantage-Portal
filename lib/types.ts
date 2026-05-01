@@ -35,6 +35,26 @@ export interface Task {
   color: TaskColor;
   currentSubmissionId?: string;
   createdAt: string;
+  /** Optional editorial scaffolding for teen writers. */
+  wordCountTarget?: number;
+  /** Editor sets this when the piece needs sourcing (research/finance pieces).
+   *  Soft requirement — does not block submission. */
+  citationsRequired?: boolean;
+  /** Active extension request, if any. */
+  extensionRequest?: ExtensionRequest;
+}
+
+export interface ExtensionRequest {
+  id: string;
+  taskId: string;
+  requestedById: string;
+  /** New ISO deadline being requested. */
+  newDeadline: string;
+  reason: string;
+  status: "pending" | "approved" | "denied";
+  decidedById?: string;
+  decidedAt?: string;
+  createdAt: string;
 }
 
 export interface SubmissionFileMeta {

@@ -1,4 +1,5 @@
 import type { Role, TaskStatus } from "./types";
+import { STATUS_DEFINITIONS } from "./status";
 
 export const STATUS_ORDER: TaskStatus[] = [
   "not_started",
@@ -7,11 +8,15 @@ export const STATUS_ORDER: TaskStatus[] = [
   "complete",
 ];
 
+/**
+ * Re-exported labels keyed by TaskStatus. Sourced from `STATUS_DEFINITIONS`
+ * so labels stay consistent with descriptions and next-action copy.
+ */
 export const STATUS_LABELS: Record<TaskStatus, string> = {
-  not_started: "Not Started",
-  in_progress: "In Progress",
-  submitted: "Submitted",
-  complete: "Complete",
+  not_started: STATUS_DEFINITIONS.not_started.label,
+  in_progress: STATUS_DEFINITIONS.in_progress.label,
+  submitted: STATUS_DEFINITIONS.submitted.label,
+  complete: STATUS_DEFINITIONS.complete.label,
 };
 
 /**
