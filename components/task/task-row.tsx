@@ -4,6 +4,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { initials, cn } from "@/lib/utils";
 import { useStore } from "@/lib/store";
+import { useRole } from "@/lib/role-context";
 import { STATUS_LABELS } from "@/lib/kanban-rules";
 import { STATUS_DEFINITIONS } from "@/lib/status";
 import type { Task } from "@/lib/types";
@@ -34,12 +35,15 @@ export function TaskRow({
   onOpen?: (id: string) => void;
 }) {
   const { users } = useStore();
+  const { user: viewer } = useRole();
   const writer = users.find((u) => u.id === task.writerId);
   const editor = task.editorId
     ? users.find((u) => u.id === task.editorId)
     : undefined;
   const due = new Date(task.deadline);
   const overdue = isPast(due) && task.status !== "complete";
+  // Don't echo the writer's own name back at them — they already know.
+  const showWriterName = writer && writer.id !== viewer.id;
 
   return (
     <button
@@ -59,7 +63,7 @@ export function TaskRow({
               ? `Overdue ${formatDistanceToNowStrict(due)}`
               : format(due, "MMM d")}
           </span>
-          {writer && <span>· {writer.name}</span>}
+          {showWriterName && <span>· {writer!.name}</span>}
           {task.citationsRequired && (
             <span className="inline-flex items-center gap-0.5">
               · <BookOpen className="h-3 w-3" /> citations
