@@ -133,6 +133,11 @@ export const submissions: Submission[] = [
     type: "file",
     version: 3,
     content: "the-new-map-review-final.pdf",
+    file: {
+      filename: "the-new-map-review-final.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 482_113,
+    },
     createdAt: daysAgo(8),
     isCurrent: true,
   },

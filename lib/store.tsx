@@ -15,6 +15,10 @@ import {
   tasks as seedTasks,
   users,
 } from "./mock-data";
+import {
+  scanDeadlineReminders,
+  type DeadlineReminder,
+} from "./deadline-reminders";
 import type {
   Comment,
   Conversation,
@@ -25,6 +29,7 @@ import type {
   ReviewDecision,
   Role,
   Submission,
+  SubmissionFileMeta,
   SubmissionType,
   Task,
   TaskColor,
@@ -63,6 +68,7 @@ type StoreValue = {
     authorId: string;
     type: SubmissionType;
     content: string;
+    file?: SubmissionFileMeta;
   }) => Submission;
   submitReview: (input: {
     submissionId: string;
@@ -75,6 +81,7 @@ type StoreValue = {
     authorId: string;
     body: string;
     inline?: boolean;
+    lineNumber?: number;
   }) => Comment;
   toggleResolveComment: (commentId: string) => void;
   sendMessage: (input: {
@@ -95,6 +102,8 @@ type StoreValue = {
     title: string;
     body?: string;
   }) => void;
+  runDeadlineScan: (input?: { now?: Date }) => DeadlineReminder[];
+  resetDeadlineReminders: () => void;
 };
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -115,6 +124,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [messages, setMessages] = useState<Message[]>(seedMessages);
   const [notifications, setNotifications] =
     useState<Notification[]>(seedNotifications);
+  const [issuedReminderKeys, setIssuedReminderKeys] = useState<Set<string>>(
+    () => new Set()
+  );
 
   const setTaskStatus = useCallback((taskId: string, status: TaskStatus) => {
     setTasks((prev) =>
@@ -237,6 +249,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         type: input.type,
         version,
         content: input.content,
+        file: input.type === "file" ? input.file : undefined,
         createdAt: new Date().toISOString(),
         isCurrent: true,
       };
@@ -313,12 +326,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const addComment = useCallback<StoreValue["addComment"]>(
     (input) => {
+      const isInline = input.inline ?? input.lineNumber !== undefined;
       const c: Comment = {
         id: nextId("c"),
         submissionId: input.submissionId,
         authorId: input.authorId,
         body: input.body,
-        inline: !!input.inline,
+        inline: isInline,
+        lineNumber: isInline ? input.lineNumber : undefined,
         resolved: false,
         createdAt: new Date().toISOString(),
       };
@@ -393,6 +408,40 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const runDeadlineScan = useCallback<StoreValue["runDeadlineScan"]>(
+    (input) => {
+      const fired = scanDeadlineReminders({
+        tasks,
+        users: usersState,
+        issuedKeys: issuedReminderKeys,
+        now: input?.now,
+      });
+      if (fired.length === 0) return fired;
+
+      const created: Notification[] = fired.map((r) => ({
+        id: nextId("n"),
+        userId: r.userId,
+        kind: "deadline",
+        title: r.title,
+        body: r.body,
+        read: false,
+        createdAt: new Date().toISOString(),
+      }));
+      setNotifications((prev) => [...created, ...prev]);
+      setIssuedReminderKeys((prev) => {
+        const next = new Set(prev);
+        for (const r of fired) next.add(r.key);
+        return next;
+      });
+      return fired;
+    },
+    [tasks, usersState, issuedReminderKeys]
+  );
+
+  const resetDeadlineReminders = useCallback(() => {
+    setIssuedReminderKeys(new Set());
+  }, []);
+
   const markAllRead = useCallback((userId: string) => {
     setNotifications((prev) =>
       prev.map((n) => (n.userId === userId ? { ...n, read: true } : n))
@@ -424,6 +473,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       markNotificationRead,
       markAllRead,
       pushNotification,
+      runDeadlineScan,
+      resetDeadlineReminders,
     }),
     [
       usersState,
@@ -449,6 +500,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       markNotificationRead,
       markAllRead,
       pushNotification,
+      runDeadlineScan,
+      resetDeadlineReminders,
     ]
   );
 

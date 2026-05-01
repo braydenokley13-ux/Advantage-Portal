@@ -20,22 +20,28 @@ import { TaskDrawer } from "@/components/task/task-drawer";
 import { TaskFormDialog } from "@/components/task/task-form-dialog";
 import { PageHeader } from "@/components/page-header";
 import { useRole } from "@/lib/role-context";
-import { useStore } from "@/lib/store";
+import {
+  useMessages,
+  useNotifications,
+  useUsers,
+  useVisibleTasks,
+} from "@/lib/hooks";
 import { canCreateTask } from "@/lib/permissions";
-import { visibleTasks } from "@/lib/visibility";
 import { initials } from "@/lib/utils";
 import { isPast, isWithinInterval, addDays, format } from "date-fns";
 
 export default function DashboardPage() {
   const { user, role } = useRole();
-  const { tasks, notifications, messages, users } = useStore();
+  const { data: visibleTasksData } = useVisibleTasks();
+  const myTasks = visibleTasksData ?? [];
+  const { data: notificationsData } = useNotifications();
+  const { data: usersData } = useUsers();
+  const { data: messagesData } = useMessages();
+  const notifications = notificationsData ?? [];
+  const users = usersData ?? [];
+  const messages = messagesData ?? [];
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-
-  const myTasks = useMemo(
-    () => visibleTasks({ tasks, role, userId: user.id }),
-    [tasks, role, user.id]
-  );
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -229,33 +235,41 @@ export default function DashboardPage() {
               <CardTitle>Recent messages</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <ul className="divide-y divide-border">
-                {recentMessages.map((m) => {
-                  const author = users.find((u) => u.id === m.authorId);
-                  return (
-                    <li key={m.id} className="px-4 py-3 flex gap-3">
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback className="text-[10px]">
-                          {initials(author?.name ?? "??")}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium truncate">
-                            {author?.name}
+              {recentMessages.length === 0 ? (
+                <EmptyState
+                  icon={Inbox}
+                  title="No messages yet"
+                  description="DMs and team chatter will show up here."
+                />
+              ) : (
+                <ul className="divide-y divide-border">
+                  {recentMessages.map((m) => {
+                    const author = users.find((u) => u.id === m.authorId);
+                    return (
+                      <li key={m.id} className="px-4 py-3 flex gap-3">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback className="text-[10px]">
+                            {initials(author?.name ?? "??")}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium truncate">
+                              {author?.name}
+                            </p>
+                            <span className="text-[10px] text-muted-foreground">
+                              {format(new Date(m.createdAt), "MMM d")}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {m.body}
                           </p>
-                          <span className="text-[10px] text-muted-foreground">
-                            {format(new Date(m.createdAt), "MMM d")}
-                          </span>
                         </div>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {m.body}
-                        </p>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </CardContent>
           </Card>
         </div>

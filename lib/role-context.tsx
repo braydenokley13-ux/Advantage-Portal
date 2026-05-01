@@ -1,13 +1,17 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import { useStore } from "./store";
+/**
+ * `useRole` is a thin compatibility layer over the new `useSession` model.
+ *
+ * Existing UI imports `useRole().user / role / setUserId / allUsers`. Those
+ * keep working — internally they read from the session. Switching demo users
+ * routes through `signInAsDemoUser` so the persistence + safety guarantees of
+ * the session apply uniformly.
+ *
+ * NEW code should call `useSession()` directly.
+ */
+import { createContext, useContext, useMemo } from "react";
+import { useSession } from "./session";
 import type { Role, User } from "./types";
 
 type RoleContextValue = {
@@ -19,40 +23,33 @@ type RoleContextValue = {
 
 const RoleContext = createContext<RoleContextValue | null>(null);
 
-const DEFAULT_USER_ID = "u6"; // leader, broadest demo view
-const STORAGE_KEY = "advantage-portal:active-user-id";
-
 export function RoleProvider({ children }: { children: React.ReactNode }) {
-  const { users } = useStore();
-  const [userId, setUserId] = useState<string>(DEFAULT_USER_ID);
+  const session = useSession();
 
-  useEffect(() => {
-    const saved =
-      typeof window !== "undefined"
-        ? window.localStorage.getItem(STORAGE_KEY)
-        : null;
-    if (saved && users.some((u) => u.id === saved)) {
-      setUserId(saved);
-    }
-  }, [users]);
+  const value = useMemo<RoleContextValue | null>(() => {
+    if (!session.currentUser) return null;
+    return {
+      user: session.currentUser,
+      role: session.currentUser.role,
+      setUserId: session.signInAsDemoUser,
+      allUsers: session.allUsers,
+    };
+  }, [session]);
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(STORAGE_KEY, userId);
-    }
-  }, [userId]);
-
-  const value = useMemo<RoleContextValue>(() => {
-    const user =
-      users.find((u) => u.id === userId) ?? users[0];
-    return { user, role: user.role, setUserId, allUsers: users };
-  }, [userId, users]);
-
-  return <RoleContext.Provider value={value}>{children}</RoleContext.Provider>;
+  // When unauthenticated, render children but `useRole()` will throw if
+  // anyone calls it. The (app) layout guards routes; surfaces outside the
+  // gate (e.g. /login) should not call `useRole`.
+  return (
+    <RoleContext.Provider value={value}>{children}</RoleContext.Provider>
+  );
 }
 
 export function useRole() {
   const ctx = useContext(RoleContext);
-  if (!ctx) throw new Error("useRole must be used within RoleProvider");
+  if (!ctx) {
+    throw new Error(
+      "useRole requires an authenticated session. Render inside the (app) gate."
+    );
+  }
   return ctx;
 }

@@ -14,25 +14,20 @@ import {
 import { MonthView } from "@/components/calendar/month-view";
 import { AgendaView } from "@/components/calendar/agenda-view";
 import { TaskDrawer } from "@/components/task/task-drawer";
-import { useStore } from "@/lib/store";
+import { useVisibleTasks } from "@/lib/hooks";
 import { useRole } from "@/lib/role-context";
-import { visibleTasks } from "@/lib/visibility";
 import { cn } from "@/lib/utils";
 
 type View = "month" | "agenda";
 
 export default function CalendarPage() {
-  const { tasks } = useStore();
-  const { user, role } = useRole();
+  const { role } = useRole();
+  const { data: baseTasksData } = useVisibleTasks();
+  const baseTasks = baseTasksData ?? [];
   const [view, setView] = useState<View>("month");
   const [cursor, setCursor] = useState<Date>(new Date());
   const [filters, setFilters] = useState<CalendarFilters>(DEFAULT_FILTERS);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
-
-  const baseTasks = useMemo(
-    () => visibleTasks({ tasks, role, userId: user.id }),
-    [tasks, role, user.id]
-  );
 
   const filtered = useMemo(
     () => applyFilters(baseTasks, filters),

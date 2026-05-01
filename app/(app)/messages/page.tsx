@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Inbox } from "lucide-react";
 import { ConversationList } from "@/components/messages/conversation-list";
 import { ChatView } from "@/components/messages/chat-view";
+import { EmptyState } from "@/components/ui/states";
 import { useStore } from "@/lib/store";
 import { useRole } from "@/lib/role-context";
 import { visibleConversations } from "@/lib/permissions";
+import { cn } from "@/lib/utils";
 
 export default function MessagesPage() {
   const { conversations } = useStore();
@@ -14,6 +17,7 @@ export default function MessagesPage() {
   const [selectedId, setSelectedId] = useState<string | null>(
     visible[0]?.id ?? null
   );
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
 
   useEffect(() => {
     if (selectedId && !visible.some((c) => c.id === selectedId)) {
@@ -21,21 +25,45 @@ export default function MessagesPage() {
     }
   }, [selectedId, visible]);
 
+  function selectMobile(id: string) {
+    setSelectedId(id);
+    setMobileChatOpen(true);
+  }
+
   return (
     <div className="h-[calc(100vh-4rem)] flex">
-      <div className="hidden md:flex md:w-80 lg:w-96 shrink-0">
+      <div
+        className={cn(
+          "md:flex md:w-80 lg:w-96 shrink-0",
+          mobileChatOpen ? "hidden md:flex" : "flex flex-1 md:flex-initial"
+        )}
+      >
         <ConversationList
           selectedId={selectedId}
-          onSelect={(id) => setSelectedId(id)}
+          onSelect={(id) => {
+            setSelectedId(id);
+            selectMobile(id);
+          }}
         />
       </div>
-      <div className="flex flex-1 min-w-0">
+      <div
+        className={cn(
+          "flex-1 min-w-0",
+          mobileChatOpen ? "flex" : "hidden md:flex"
+        )}
+      >
         {selectedId ? (
-          <ChatView conversationId={selectedId} />
+          <ChatView
+            conversationId={selectedId}
+            onBack={() => setMobileChatOpen(false)}
+          />
         ) : (
-          <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-            No conversations yet.
-          </div>
+          <EmptyState
+            icon={Inbox}
+            title="No conversations yet"
+            description="Start a DM or open the team channel from the list."
+            className="flex-1"
+          />
         )}
       </div>
     </div>

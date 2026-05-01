@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowLeft,
   CheckCheck,
   Hash,
   Megaphone,
@@ -20,7 +21,13 @@ import { canPostInConversation } from "@/lib/permissions";
 import { initials, cn } from "@/lib/utils";
 import { format, isSameDay } from "date-fns";
 
-export function ChatView({ conversationId }: { conversationId: string }) {
+export function ChatView({
+  conversationId,
+  onBack,
+}: {
+  conversationId: string;
+  onBack?: () => void;
+}) {
   const { user } = useRole();
   const { conversations, messages, users, sendMessage } = useStore();
   const conversation = conversations.find((c) => c.id === conversationId);
@@ -75,6 +82,16 @@ export function ChatView({ conversationId }: { conversationId: string }) {
     <div className="flex flex-1 flex-col min-w-0">
       <header className="flex items-center justify-between px-5 py-3 border-b border-border">
         <div className="flex items-center gap-3 min-w-0">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="md:hidden -ml-1 p-1.5 rounded-md hover:bg-accent text-muted-foreground"
+              aria-label="Back to conversations"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+          )}
           <ConversationIcon kind={conversation.kind} name={conversation.title} />
           <div className="min-w-0">
             <h2 className="text-sm font-semibold tracking-tight truncate">

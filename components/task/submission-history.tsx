@@ -4,7 +4,7 @@ import { FileText, Link2, Type } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useStore } from "@/lib/store";
 import { format } from "date-fns";
-import { cn } from "@/lib/utils";
+import { cn, formatBytes } from "@/lib/utils";
 import type { Submission, SubmissionType } from "@/lib/types";
 
 const KIND_ICON: Record<SubmissionType, React.ComponentType<{ className?: string }>> = {
@@ -61,7 +61,9 @@ export function SubmissionHistory({
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground truncate">
-                  {format(new Date(s.createdAt), "MMM d, h:mm a")} · {kindLabel(s.type)}
+                  {format(new Date(s.createdAt), "MMM d, h:mm a")} ·{" "}
+                  {kindLabel(s.type)}
+                  {s.file ? ` · ${formatBytes(s.file.sizeBytes)}` : ""}
                 </p>
               </div>
             </button>
