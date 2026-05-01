@@ -32,11 +32,18 @@ import { SubmissionViewer } from "./submission-viewer";
 import { CommentsPanel } from "./comments-panel";
 import { ReviewPanel } from "./review-panel";
 import { TaskFormDialog } from "./task-form-dialog";
+import { EditorialChecklist } from "./editorial-checklist";
+import { SensitivePanel } from "./sensitive-panel";
 import { useStore } from "@/lib/store";
 import { useRole } from "@/lib/role-context";
 import { canEditTask, canReview, canSubmit } from "@/lib/permissions";
 import { STATUS_LABELS } from "@/lib/kanban-rules";
 import { STATUS_DEFINITIONS } from "@/lib/status";
+import {
+  STAGE_DEFINITIONS,
+  deriveStoryStage,
+  nextActionForRole,
+} from "@/lib/newsroom-stage";
 import { initials, cn } from "@/lib/utils";
 import { format, formatDistanceToNowStrict, isPast } from "date-fns";
 import type { Submission, Task } from "@/lib/types";
@@ -60,8 +67,16 @@ export function TaskDrawer({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
-  const { tasks, submissions, users, requestExtension, decideExtension } =
-    useStore();
+  const {
+    tasks,
+    submissions,
+    users,
+    sections,
+    issues,
+    checklists,
+    requestExtension,
+    decideExtension,
+  } = useStore();
   const { user } = useRole();
   const [extOpen, setExtOpen] = useState(false);
   const [extDate, setExtDate] = useState("");
@@ -105,6 +120,21 @@ export function TaskDrawer({
   const editor = task.editorId
     ? users.find((u) => u.id === task.editorId)
     : undefined;
+  const copyEditor = task.copyEditorId
+    ? users.find((u) => u.id === task.copyEditorId)
+    : undefined;
+  const factChecker = task.factCheckerId
+    ? users.find((u) => u.id === task.factCheckerId)
+    : undefined;
+  const section = task.sectionId
+    ? sections.find((s) => s.id === task.sectionId)
+    : undefined;
+  const issue = task.issueId
+    ? issues.find((i) => i.id === task.issueId)
+    : undefined;
+  const checklist = checklists.find((c) => c.taskId === task.id);
+  const stageInfo = deriveStoryStage({ task, checklist, issue });
+  const nextNewsroomAction = nextActionForRole(stageInfo.stage, user.role);
   const due = new Date(task.deadline);
   const overdue = isPast(due) && task.status !== "complete";
 
@@ -113,10 +143,19 @@ export function TaskDrawer({
       <DialogContent side="right" className="p-0">
         <DialogHeader className="pr-12">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge variant={STATUS_TONE[task.status]}>
                 {STATUS_LABELS[task.status]}
               </Badge>
+              <Badge variant={STAGE_DEFINITIONS[stageInfo.stage].tone}>
+                {STAGE_DEFINITIONS[stageInfo.stage].label}
+              </Badge>
+              {section && (
+                <Badge variant="secondary">{section.name}</Badge>
+              )}
+              {issue && (
+                <Badge variant="outline">{issue.name}</Badge>
+              )}
               <Badge variant="outline" className="capitalize">
                 {task.color}
               </Badge>
@@ -161,7 +200,27 @@ export function TaskDrawer({
                       {initials(editor.name)}
                     </AvatarFallback>
                   </Avatar>
-                  <span>{editor.name} · editor</span>
+                  <span>{editor.name} · section editor</span>
+                </span>
+              )}
+              {copyEditor && (
+                <span className="inline-flex items-center gap-1.5">
+                  <Avatar className="h-5 w-5">
+                    <AvatarFallback className="text-[9px]">
+                      {initials(copyEditor.name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span>{copyEditor.name} · copy</span>
+                </span>
+              )}
+              {factChecker && (
+                <span className="inline-flex items-center gap-1.5">
+                  <Avatar className="h-5 w-5">
+                    <AvatarFallback className="text-[9px]">
+                      {initials(factChecker.name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span>{factChecker.name} · fact-check</span>
                 </span>
               )}
             </span>
@@ -188,18 +247,29 @@ export function TaskDrawer({
             <TabsContent value="brief" className="mt-4 space-y-4">
               <div className="rounded-lg border border-border bg-secondary/40 p-3 space-y-1">
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
-                  What this status means
+                  Stage · {STAGE_DEFINITIONS[stageInfo.stage].label}
                 </p>
                 <p className="text-sm leading-snug">
-                  {STATUS_DEFINITIONS[task.status].description}
+                  {STAGE_DEFINITIONS[stageInfo.stage].description}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   <span className="font-medium text-foreground">Next:</span>{" "}
-                  {STATUS_DEFINITIONS[task.status].nextAction[
-                    user.role === "admin" ? "leader" : user.role
-                  ]}
+                  {nextNewsroomAction}
+                </p>
+                {stageInfo.reasons.length > 0 && (
+                  <ul className="text-[11px] text-amber-700 mt-1 space-y-0.5 list-disc pl-4">
+                    {stageInfo.reasons.map((r) => (
+                      <li key={r.code}>{r.message}</li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-[11px] text-muted-foreground border-t border-border/60 pt-2 mt-1">
+                  <span className="font-medium">Status:</span>{" "}
+                  {STATUS_DEFINITIONS[task.status].description}
                 </p>
               </div>
+
+              <SensitivePanel task={task} />
 
               {(task.wordCountTarget ||
                 task.citationsRequired ||
@@ -257,6 +327,62 @@ export function TaskDrawer({
                 requestExtension,
                 decideExtension,
               })}
+
+              {task.brief && (
+                <div className="rounded-lg border border-border bg-card p-3 space-y-2">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
+                    Assignment brief
+                  </p>
+                  {task.brief.angle && (
+                    <BriefRow label="Angle" value={task.brief.angle} />
+                  )}
+                  {task.brief.mustAnswer && task.brief.mustAnswer.length > 0 && (
+                    <div className="space-y-0.5">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Must-answer questions
+                      </p>
+                      <ul className="list-disc pl-5 text-sm space-y-0.5">
+                        {task.brief.mustAnswer.map((q, i) => (
+                          <li key={i}>{q}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {task.brief.requiredSources &&
+                    task.brief.requiredSources.length > 0 && (
+                      <div className="space-y-0.5">
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          Required sources
+                        </p>
+                        <ul className="list-disc pl-5 text-sm space-y-0.5">
+                          {task.brief.requiredSources.map((s, i) => (
+                            <li key={i}>{s}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  {task.brief.quoteRequirements && (
+                    <BriefRow
+                      label="Quote requirements"
+                      value={task.brief.quoteRequirements}
+                    />
+                  )}
+                  {task.brief.visualNeeds && (
+                    <BriefRow
+                      label="Visuals / design"
+                      value={task.brief.visualNeeds}
+                    />
+                  )}
+                  {task.brief.publishingNotes && (
+                    <BriefRow
+                      label="Publishing notes"
+                      value={task.brief.publishingNotes}
+                    />
+                  )}
+                </div>
+              )}
+
+              <EditorialChecklist task={task} />
 
               <div>
                 <h4 className="text-xs uppercase tracking-wide text-muted-foreground font-medium">
@@ -327,6 +453,17 @@ export function TaskDrawer({
         onOpenChange={setEditing}
       />
     </Dialog>
+  );
+}
+
+function BriefRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <p className="text-sm whitespace-pre-wrap">{value}</p>
+    </div>
   );
 }
 
