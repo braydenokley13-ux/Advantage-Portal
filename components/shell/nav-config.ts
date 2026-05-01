@@ -9,6 +9,7 @@ import {
   Users,
   ClipboardList,
   ShieldCheck,
+  ShieldAlert,
   type LucideIcon,
 } from "lucide-react";
 import type { Role } from "@/lib/types";
@@ -80,6 +81,12 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Admin",
     icon: ShieldCheck,
     roles: ["admin"],
+  },
+  {
+    href: "/admin/moderation",
+    label: "Moderation",
+    icon: ShieldAlert,
+    roles: ["leader", "admin"],
   },
 ];
 

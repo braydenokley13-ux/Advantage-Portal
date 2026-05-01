@@ -85,3 +85,12 @@ export function canPostAnnouncement(role: Role) {
 export function canPinMessage(role: Role) {
   return role === "leader" || role === "admin";
 }
+
+/**
+ * Access to the moderation queue for reported messages. Leaders share
+ * safety power with admins per the role policy; writers and editors
+ * never see this surface.
+ */
+export function canModerate(role: Role) {
+  return role === "leader" || role === "admin";
+}
