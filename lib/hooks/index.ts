@@ -173,6 +173,20 @@ export function useEditorialChecklist(
   );
 }
 
+/**
+ * Bulk checklist read. Used by surfaces that derive readiness for many
+ * stories at once (the Issues planning page). Pass `taskIds` to scope the
+ * fetch; omit to fetch all.
+ */
+export function useChecklists(
+  taskIds?: string[]
+): ApiResource<EditorialChecklistZ[]> {
+  const api = useApiClient();
+  // Stable cache key so re-renders with the same id set don't refetch.
+  const key = taskIds ? taskIds.slice().sort().join(",") : "*";
+  return useApiResource(() => api.listChecklists(taskIds), [api, key]);
+}
+
 export function useSensitiveFlags(filter?: {
   status?: SensitiveFlagZ["status"];
   taskId?: string;

@@ -159,6 +159,9 @@ export interface ApiClient {
   /** Returns null if no checklist exists yet — call `updateChecklistItem`
    *  to lazily seed one. */
   getEditorialChecklist(taskId: string): Promise<EditorialChecklistZ | null>;
+  /** Bulk read for surfaces that need many checklists at once (issue
+   *  readiness derivation). Optionally filter by a list of task ids. */
+  listChecklists(taskIds?: string[]): Promise<EditorialChecklistZ[]>;
   updateChecklistItem(input: {
     taskId: string;
     key: string;

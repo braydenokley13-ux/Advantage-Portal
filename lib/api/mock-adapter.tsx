@@ -359,6 +359,12 @@ export function useMockApiClient(currentUserId: string | null): ApiClient {
         const cl = store.checklists.find((c) => c.taskId === taskId);
         return cl ? asChecklist(cl) : null;
       },
+      async listChecklists(taskIds) {
+        const all = store.checklists.map(asChecklist);
+        if (!taskIds || taskIds.length === 0) return all;
+        const set = new Set(taskIds);
+        return all.filter((c) => set.has(c.taskId));
+      },
       async updateChecklistItem(input) {
         store.toggleChecklistItem(input);
         const cl = store.checklists.find((c) => c.taskId === input.taskId);

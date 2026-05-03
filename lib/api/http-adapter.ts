@@ -140,6 +140,7 @@ export class HttpApiClient implements ApiClient {
   getEditorialChecklist() {
     return this.notImplemented("getEditorialChecklist");
   }
+  listChecklists() { return this.notImplemented("listChecklists"); }
   updateChecklistItem() {
     return this.notImplemented("updateChecklistItem");
   }

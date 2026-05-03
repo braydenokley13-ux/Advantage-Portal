@@ -1364,6 +1364,16 @@ export class SupabaseApiClient implements ApiClient {
     return data ? rowToChecklist(data as EditorialChecklistRow) : null;
   }
 
+  async listChecklists(taskIds?: string[]): Promise<EditorialChecklistZ[]> {
+    let q = this.sb
+      .from("editorial_checklists")
+      .select("task_id, items, updated_at");
+    if (taskIds && taskIds.length > 0) q = q.in("task_id", taskIds);
+    const { data, error } = await q.order("updated_at", { ascending: false });
+    if (error) this.err("listChecklists", error);
+    return (data ?? []).map((r) => rowToChecklist(r as EditorialChecklistRow));
+  }
+
   async updateChecklistItem(input: {
     taskId: string;
     key: string;

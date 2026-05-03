@@ -21,6 +21,8 @@ import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useStore } from "@/lib/store";
+import { useApiClient } from "@/lib/api/provider";
+import { useIssues, usePitches, useSections } from "@/lib/hooks";
 import { useRole } from "@/lib/role-context";
 import { initials } from "@/lib/utils";
 import type { Pitch } from "@/lib/types";
@@ -45,7 +47,16 @@ const STATUS_LABEL: Record<Pitch["status"], string> = {
 
 export default function PitchesPage() {
   const { user, role } = useRole();
-  const { sections, pitches, users, issues } = useStore();
+  // Source-of-truth reads via hooks (mock or supabase).
+  const { data: sectionsData } = useSections();
+  const { data: pitchesData, refetch: refetchPitches } = usePitches();
+  const { data: issuesData } = useIssues();
+  // Users stays on the store as a sync cache for name lookups.
+  const { users } = useStore();
+
+  const sections = sectionsData ?? [];
+  const pitches = pitchesData ?? [];
+  const issues = issuesData ?? [];
 
   const isReviewer =
     role === "editor" || role === "leader" || role === "admin";
@@ -126,7 +137,13 @@ export default function PitchesPage() {
               />
             ) : (
               reviewQueue.map((p) => (
-                <PitchReviewCard key={p.id} pitch={p} />
+                <PitchReviewCard
+                  key={p.id}
+                  pitch={p}
+                  sections={sections}
+                  issues={issues}
+                  onChanged={refetchPitches}
+                />
               ))
             )}
 
@@ -165,7 +182,7 @@ export default function PitchesPage() {
         )}
 
         <TabsContent value="submit" className="mt-4">
-          <PitchForm />
+          <PitchForm sections={sections} onSubmitted={refetchPitches} />
         </TabsContent>
 
         <TabsContent value="mine" className="mt-4 space-y-3">
@@ -217,8 +234,14 @@ export default function PitchesPage() {
   );
 }
 
-function PitchForm() {
-  const { sections, createPitch } = useStore();
+function PitchForm({
+  sections,
+  onSubmitted,
+}: {
+  sections: { id: string; name: string }[];
+  onSubmitted: () => void;
+}) {
+  const api = useApiClient();
   const { user } = useRole();
 
   const [headline, setHeadline] = useState("");
@@ -237,31 +260,38 @@ function PitchForm() {
     whyNow.trim().length > 4 &&
     sectionId.length > 0;
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if (!valid) return;
-    createPitch({
-      proposedHeadline: headline.trim(),
-      sectionId,
-      angle: angle.trim(),
-      whyNow: whyNow.trim(),
-      proposedSources: sources
-        .split("\n")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      expectedWordCount: wordCount ? Math.max(1, Number(wordCount)) : undefined,
-      deadlinePref: deadline ? new Date(deadline).toISOString() : undefined,
-      writerNote: note.trim() || undefined,
-      writerId: user.id,
-    });
-    setSubmitted(true);
-    setHeadline("");
-    setAngle("");
-    setWhyNow("");
-    setSources("");
-    setWordCount("");
-    setDeadline("");
-    setNote("");
-    setTimeout(() => setSubmitted(false), 2400);
+    try {
+      await api.createPitch({
+        proposedHeadline: headline.trim(),
+        sectionId,
+        angle: angle.trim(),
+        whyNow: whyNow.trim(),
+        proposedSources: sources
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean),
+        expectedWordCount: wordCount
+          ? Math.max(1, Number(wordCount))
+          : undefined,
+        deadlinePref: deadline ? new Date(deadline).toISOString() : undefined,
+        writerNote: note.trim() || undefined,
+        writerId: user.id,
+      });
+      onSubmitted();
+      setSubmitted(true);
+      setHeadline("");
+      setAngle("");
+      setWhyNow("");
+      setSources("");
+      setWordCount("");
+      setDeadline("");
+      setNote("");
+      setTimeout(() => setSubmitted(false), 2400);
+    } catch (e) {
+      console.error("createPitch failed", e);
+    }
   }
 
   return (
@@ -398,8 +428,19 @@ function PitchForm() {
   );
 }
 
-function PitchReviewCard({ pitch }: { pitch: Pitch }) {
-  const { sections, users, issues, decidePitch, convertPitch } = useStore();
+function PitchReviewCard({
+  pitch,
+  sections,
+  issues,
+  onChanged,
+}: {
+  pitch: Pitch;
+  sections: { id: string; name: string }[];
+  issues: { id: string; name: string }[];
+  onChanged: () => void;
+}) {
+  const api = useApiClient();
+  const { users } = useStore();
   const { user, role } = useRole();
   const sec = sections.find((s) => s.id === pitch.sectionId);
   const writer = users.find((u) => u.id === pitch.writerId);
@@ -486,28 +527,30 @@ function PitchReviewCard({ pitch }: { pitch: Pitch }) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() =>
-                decidePitch({
+              onClick={async () => {
+                await api.decidePitch({
                   pitchId: pitch.id,
                   decidedById: user.id,
                   accept: true,
                   note: note.trim() || undefined,
-                })
-              }
+                });
+                onChanged();
+              }}
             >
               <CheckCircle2 className="h-3.5 w-3.5" /> Accept
             </Button>
             <Button
               variant="outline"
               size="sm"
-              onClick={() =>
-                decidePitch({
+              onClick={async () => {
+                await api.decidePitch({
                   pitchId: pitch.id,
                   decidedById: user.id,
                   accept: false,
                   note: note.trim() || undefined,
-                })
-              }
+                });
+                onChanged();
+              }}
             >
               <XCircle className="h-3.5 w-3.5" /> Decline
             </Button>
@@ -565,8 +608,8 @@ function PitchReviewCard({ pitch }: { pitch: Pitch }) {
                   variant="gradient"
                   size="sm"
                   disabled={!deadline}
-                  onClick={() => {
-                    convertPitch({
+                  onClick={async () => {
+                    await api.convertPitch({
                       pitchId: pitch.id,
                       editorId: editorId || undefined,
                       deadline: new Date(`${deadline}T17:00:00`).toISOString(),
@@ -574,6 +617,7 @@ function PitchReviewCard({ pitch }: { pitch: Pitch }) {
                       issueId: issueId || undefined,
                     });
                     setShowConvert(false);
+                    onChanged();
                   }}
                 >
                   Create assignment
