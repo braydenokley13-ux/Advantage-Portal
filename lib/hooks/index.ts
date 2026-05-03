@@ -14,10 +14,17 @@ import { useSession } from "@/lib/session";
 import type {
   CommentZ,
   ConversationZ,
+  EditorialChecklistZ,
+  IssueSlotZ,
+  IssueZ,
   MessageZ,
   ModerationReportZ,
   NotificationZ,
+  PitchStatusZ,
+  PitchZ,
   ReviewZ,
+  SectionZ,
+  SensitiveFlagZ,
   SubmissionZ,
   TaskZ,
   UserZ,
@@ -119,4 +126,74 @@ export function useModerationReports(filter?: {
  */
 export function useCalendarEvents(): ApiResource<TaskZ[]> {
   return useVisibleTasks();
+}
+
+// ── Newsroom: sections / pitches / issues / slots / checklists / flags ─────
+//
+// These hooks read through the active ApiClient (mock or Supabase). The
+// existing newsroom pages still read directly from `useStore()` to keep
+// optimistic in-memory updates snappy; these hooks are the migration path
+// for moving those reads onto persisted backends without touching the UI.
+export function useSections(): ApiResource<SectionZ[]> {
+  const api = useApiClient();
+  return useApiResource(() => api.listSections(), [api]);
+}
+
+export function usePitches(filter?: {
+  writerId?: string;
+  status?: PitchStatusZ;
+}): ApiResource<PitchZ[]> {
+  const api = useApiClient();
+  return useApiResource(
+    () => api.listPitches(filter),
+    [api, filter?.writerId, filter?.status]
+  );
+}
+
+export function useIssues(): ApiResource<IssueZ[]> {
+  const api = useApiClient();
+  return useApiResource(() => api.listIssues(), [api]);
+}
+
+export function useIssueSlots(issueId?: string): ApiResource<IssueSlotZ[]> {
+  const api = useApiClient();
+  return useApiResource(() => api.listIssueSlots(issueId), [api, issueId]);
+}
+
+export function useEditorialChecklist(
+  taskId: string | null
+): ApiResource<EditorialChecklistZ | null> {
+  const api = useApiClient();
+  return useApiResource(
+    () =>
+      taskId
+        ? api.getEditorialChecklist(taskId)
+        : Promise.resolve(null),
+    [api, taskId]
+  );
+}
+
+/**
+ * Bulk checklist read. Used by surfaces that derive readiness for many
+ * stories at once (the Issues planning page). Pass `taskIds` to scope the
+ * fetch; omit to fetch all.
+ */
+export function useChecklists(
+  taskIds?: string[]
+): ApiResource<EditorialChecklistZ[]> {
+  const api = useApiClient();
+  // Stable cache key so re-renders with the same id set don't refetch.
+  const key = taskIds ? taskIds.slice().sort().join(",") : "*";
+  return useApiResource(() => api.listChecklists(taskIds), [api, key]);
+}
+
+export function useSensitiveFlags(filter?: {
+  status?: SensitiveFlagZ["status"];
+  taskId?: string;
+}): ApiResource<SensitiveFlagZ[]> {
+  const api = useApiClient();
+  return useApiResource(
+    () => api.listSensitiveFlags(filter),
+    [api, filter?.status, filter?.taskId]
+  );
 }

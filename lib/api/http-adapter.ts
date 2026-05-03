@@ -123,4 +123,28 @@ export class HttpApiClient implements ApiClient {
     return this.notImplemented("bulkUpdateModerationReports");
   }
   hideMessage() { return this.notImplemented("hideMessage"); }
+
+  // ── Newsroom — placeholders ───────────────────────────────────────────
+  listSections() { return this.notImplemented("listSections"); }
+  listPitches() { return this.notImplemented("listPitches"); }
+  createPitch() { return this.notImplemented("createPitch"); }
+  decidePitch() { return this.notImplemented("decidePitch"); }
+  convertPitch() { return this.notImplemented("convertPitch"); }
+  listIssues() { return this.notImplemented("listIssues"); }
+  getIssue() { return this.notImplemented("getIssue"); }
+  updateIssue() { return this.notImplemented("updateIssue"); }
+  publishIssue() { return this.notImplemented("publishIssue"); }
+  listIssueSlots() { return this.notImplemented("listIssueSlots"); }
+  upsertIssueSlot() { return this.notImplemented("upsertIssueSlot"); }
+  removeIssueSlot() { return this.notImplemented("removeIssueSlot"); }
+  getEditorialChecklist() {
+    return this.notImplemented("getEditorialChecklist");
+  }
+  listChecklists() { return this.notImplemented("listChecklists"); }
+  updateChecklistItem() {
+    return this.notImplemented("updateChecklistItem");
+  }
+  listSensitiveFlags() { return this.notImplemented("listSensitiveFlags"); }
+  raiseSensitiveFlag() { return this.notImplemented("raiseSensitiveFlag"); }
+  decideSensitiveFlag() { return this.notImplemented("decideSensitiveFlag"); }
 }

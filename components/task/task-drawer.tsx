@@ -34,6 +34,7 @@ import { ReviewPanel } from "./review-panel";
 import { TaskFormDialog } from "./task-form-dialog";
 import { EditorialChecklist } from "./editorial-checklist";
 import { SensitivePanel } from "./sensitive-panel";
+import { useEditorialChecklist, useTasks } from "@/lib/hooks";
 import { useStore } from "@/lib/store";
 import { useRole } from "@/lib/role-context";
 import { canEditTask, canReview, canSubmit } from "@/lib/permissions";
@@ -67,16 +68,21 @@ export function TaskDrawer({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
+  // Tasks are the source of truth — read via useTasks so sensitive flag
+  // changes triggered inside the drawer (raise/clear/hold) round-trip via
+  // the API and refetch into this view too.
+  const { data: tasksData, refetch: refetchTasks } = useTasks();
+  // Sync caches kept on the store: submissions, users, sections, issues,
+  // and the existing extension-request mutators (unchanged this phase).
   const {
-    tasks,
     submissions,
     users,
     sections,
     issues,
-    checklists,
     requestExtension,
     decideExtension,
   } = useStore();
+  const tasks = tasksData ?? [];
   const { user } = useRole();
   const [extOpen, setExtOpen] = useState(false);
   const [extDate, setExtDate] = useState("");
@@ -132,8 +138,11 @@ export function TaskDrawer({
   const issue = task.issueId
     ? issues.find((i) => i.id === task.issueId)
     : undefined;
-  const checklist = checklists.find((c) => c.taskId === task.id);
-  const stageInfo = deriveStoryStage({ task, checklist, issue });
+  // Pull the checklist for this single task through the API hook so the
+  // stage derivation reflects toggles made in the drawer immediately.
+  const { data: checklistData } = useEditorialChecklist(task.id);
+  const checklist = checklistData ?? undefined;
+  const stageInfo = deriveStoryStage({ task, checklist: checklist ?? undefined, issue });
   const nextNewsroomAction = nextActionForRole(stageInfo.stage, user.role);
   const due = new Date(task.deadline);
   const overdue = isPast(due) && task.status !== "complete";
@@ -269,7 +278,7 @@ export function TaskDrawer({
                 </p>
               </div>
 
-              <SensitivePanel task={task} />
+              <SensitivePanel task={task} onChanged={refetchTasks} />
 
               {(task.wordCountTarget ||
                 task.citationsRequired ||

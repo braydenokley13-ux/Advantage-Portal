@@ -107,6 +107,44 @@ export const ExtensionRequestSchema = z.object({
 });
 export type ExtensionRequestZ = z.infer<typeof ExtensionRequestSchema>;
 
+// AssignmentBrief is referenced by Task via the optional `brief` field.
+export const AssignmentBriefSchema = z.object({
+  angle: z.string().optional(),
+  mustAnswer: z.array(z.string()).optional(),
+  requiredSources: z.array(z.string()).optional(),
+  quoteRequirements: z.string().optional(),
+  visualNeeds: z.string().optional(),
+  publishingNotes: z.string().optional(),
+});
+export type AssignmentBriefZ = z.infer<typeof AssignmentBriefSchema>;
+
+export const SensitiveStatusSchema = z.enum(["open", "cleared", "holding"]);
+export type SensitiveStatusZ = z.infer<typeof SensitiveStatusSchema>;
+
+export const SensitiveReasonSchema = z.enum([
+  "student_privacy",
+  "politics",
+  "financial_claims",
+  "allegations",
+  "medical_or_mental_health",
+  "other",
+]);
+export type SensitiveReasonZ = z.infer<typeof SensitiveReasonSchema>;
+
+export const SensitiveFlagSchema = z.object({
+  id: z.string(),
+  taskId: z.string(),
+  reason: SensitiveReasonSchema,
+  notes: z.string(),
+  status: SensitiveStatusSchema,
+  raisedById: z.string(),
+  raisedAt: isoDate,
+  decidedById: z.string().optional(),
+  decidedAt: isoDate.optional(),
+  decisionNote: z.string().optional(),
+});
+export type SensitiveFlagZ = z.infer<typeof SensitiveFlagSchema>;
+
 export const TaskSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -121,6 +159,16 @@ export const TaskSchema = z.object({
   wordCountTarget: z.number().int().positive().optional(),
   citationsRequired: z.boolean().optional(),
   extensionRequest: ExtensionRequestSchema.optional(),
+  // ── Newsroom fields (additive, all optional). ──────────────────────────
+  sectionId: z.string().optional(),
+  pitchId: z.string().optional(),
+  issueId: z.string().optional(),
+  copyEditorId: z.string().optional(),
+  factCheckerId: z.string().optional(),
+  slug: z.string().optional(),
+  brief: AssignmentBriefSchema.optional(),
+  wordCountActual: z.number().int().nonnegative().optional(),
+  sensitive: SensitiveFlagSchema.optional(),
 });
 export type TaskZ = z.infer<typeof TaskSchema>;
 
@@ -349,6 +397,159 @@ export type ModerationReportUpdateInputZ = z.infer<
   typeof ModerationReportUpdateInput
 >;
 
+// ────────────────────────────────────────────────────────────────────────────
+// Newsroom workflow — sections, pitches, issues, slots, checklists, flags
+// ────────────────────────────────────────────────────────────────────────────
+
+export const SectionSchema = z.object({
+  id: z.string(),
+  slug: z.string(),
+  name: z.string(),
+  description: z.string(),
+  accent: z.string(),
+});
+export type SectionZ = z.infer<typeof SectionSchema>;
+
+export const PitchStatusSchema = z.enum([
+  "submitted",
+  "accepted",
+  "declined",
+  "converted",
+]);
+export type PitchStatusZ = z.infer<typeof PitchStatusSchema>;
+
+export const PitchSchema = z.object({
+  id: z.string(),
+  proposedHeadline: z.string(),
+  sectionId: z.string(),
+  angle: z.string(),
+  whyNow: z.string(),
+  proposedSources: z.array(z.string()),
+  expectedWordCount: z.number().int().positive().optional(),
+  deadlinePref: isoDate.optional(),
+  writerNote: z.string().optional(),
+  writerId: z.string(),
+  status: PitchStatusSchema,
+  editorNote: z.string().optional(),
+  decidedById: z.string().optional(),
+  decidedAt: isoDate.optional(),
+  taskId: z.string().optional(),
+  createdAt: isoDate,
+});
+export type PitchZ = z.infer<typeof PitchSchema>;
+
+export const PitchCreateInput = z.object({
+  proposedHeadline: z.string().min(1),
+  sectionId: z.string(),
+  angle: z.string().min(1),
+  whyNow: z.string().min(1),
+  proposedSources: z.array(z.string()).default([]),
+  expectedWordCount: z.number().int().positive().optional(),
+  deadlinePref: isoDate.optional(),
+  writerNote: z.string().optional(),
+  writerId: z.string(),
+});
+export type PitchCreateInputZ = z.infer<typeof PitchCreateInput>;
+
+export const PitchDecideInput = z.object({
+  pitchId: z.string(),
+  decidedById: z.string(),
+  accept: z.boolean(),
+  note: z.string().optional(),
+});
+export type PitchDecideInputZ = z.infer<typeof PitchDecideInput>;
+
+export const PitchConvertInput = z.object({
+  pitchId: z.string(),
+  editorId: z.string().optional(),
+  deadline: isoDate,
+  leaderId: z.string(),
+  issueId: z.string().optional(),
+});
+export type PitchConvertInputZ = z.infer<typeof PitchConvertInput>;
+
+export const IssueStatusSchema = z.enum([
+  "planning",
+  "production",
+  "published",
+  "archived",
+]);
+export type IssueStatusZ = z.infer<typeof IssueStatusSchema>;
+
+export const IssueSchema = z.object({
+  id: z.string(),
+  number: z.number().int().nonnegative(),
+  name: z.string(),
+  publishDate: isoDate,
+  status: IssueStatusSchema,
+  notes: z.string().optional(),
+});
+export type IssueZ = z.infer<typeof IssueSchema>;
+
+export const IssueUpdateInput = z.object({
+  number: z.number().int().nonnegative().optional(),
+  name: z.string().min(1).optional(),
+  publishDate: isoDate.optional(),
+  status: IssueStatusSchema.optional(),
+  notes: z.string().optional(),
+});
+export type IssueUpdateInputZ = z.infer<typeof IssueUpdateInput>;
+
+export const IssueSlotPrioritySchema = z.enum(["must_run", "nice_to_run"]);
+export type IssueSlotPriorityZ = z.infer<typeof IssueSlotPrioritySchema>;
+
+export const IssueSlotSchema = z.object({
+  id: z.string(),
+  issueId: z.string(),
+  taskId: z.string(),
+  priority: IssueSlotPrioritySchema,
+});
+export type IssueSlotZ = z.infer<typeof IssueSlotSchema>;
+
+export const IssueSlotUpsertInput = z.object({
+  issueId: z.string(),
+  taskId: z.string(),
+  priority: IssueSlotPrioritySchema.optional(),
+});
+export type IssueSlotUpsertInputZ = z.infer<typeof IssueSlotUpsertInput>;
+
+export const ChecklistGroupSchema = z.enum(["general", "business", "sensitive"]);
+export type ChecklistGroupZ = z.infer<typeof ChecklistGroupSchema>;
+
+export const ChecklistItemSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  group: ChecklistGroupSchema,
+  required: z.boolean(),
+  checked: z.boolean(),
+  checkedById: z.string().optional(),
+  checkedAt: isoDate.optional(),
+});
+export type ChecklistItemZ = z.infer<typeof ChecklistItemSchema>;
+
+export const EditorialChecklistSchema = z.object({
+  taskId: z.string(),
+  items: z.array(ChecklistItemSchema),
+  updatedAt: isoDate,
+});
+export type EditorialChecklistZ = z.infer<typeof EditorialChecklistSchema>;
+
+export const SensitiveFlagRaiseInput = z.object({
+  taskId: z.string(),
+  raisedById: z.string(),
+  reason: SensitiveReasonSchema,
+  notes: z.string().min(1),
+});
+export type SensitiveFlagRaiseInputZ = z.infer<typeof SensitiveFlagRaiseInput>;
+
+export const SensitiveFlagDecideInput = z.object({
+  taskId: z.string(),
+  decidedById: z.string(),
+  status: z.enum(["cleared", "holding"]),
+  note: z.string().optional(),
+});
+export type SensitiveFlagDecideInputZ = z.infer<typeof SensitiveFlagDecideInput>;
+
 export const Schemas = {
   User: UserSchema,
   Task: TaskSchema,
@@ -359,4 +560,10 @@ export const Schemas = {
   Message: MessageSchema,
   Notification: NotificationSchema,
   ModerationReport: ModerationReportSchema,
+  Section: SectionSchema,
+  Pitch: PitchSchema,
+  Issue: IssueSchema,
+  IssueSlot: IssueSlotSchema,
+  EditorialChecklist: EditorialChecklistSchema,
+  SensitiveFlag: SensitiveFlagSchema,
 } as const;

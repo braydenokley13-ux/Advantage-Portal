@@ -154,3 +154,13 @@ The Report flow on the chat side dedupes on (reporter, message). Subsequent repo
 5. Audit-event emission: write rows to `audit_events` from the moderation actions, role updates, and extension decisions, and read them on `/admin`.
 6. Storage buckets for file submissions (per `docs/supabase-setup-guide.md` §9).
 7. Optional: a `/admin/moderation/[id]` deep link so moderators can paste a report URL into the admins-only chat.
+
+## Phase 3 — Newsroom persistence (added)
+
+The newsroom workflow entities introduced in the newsroom phase
+(sections, issues, issue_slots, pitches, editorial_checklists,
+sensitive_flags) now persist through `SupabaseApiClient`. See
+`docs/newsroom-persistence-supabase.md` for schema + RLS + QA details.
+The new migrations are `supabase/migrations/0002_newsroom_workflow.sql`
+and `0003_newsroom_rls.sql`; the new seed is `supabase/seed_newsroom.sql`.
+Mock mode is preserved.

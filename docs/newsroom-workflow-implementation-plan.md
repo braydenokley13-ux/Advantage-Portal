@@ -146,17 +146,46 @@ admins can `clear` (allow) or `hold` (block until resolved) the flag.
   desks", leader "Issue readiness" + "Sensitive escalations", admin
   "Sensitive escalations" overview.
 
+## Phase 3 update — newsroom persistence (this update)
+
+Done in `docs/newsroom-persistence-supabase.md`:
+
+- Migration `0002_newsroom_workflow.sql` adds `sections`, `issues`,
+  `issue_slots`, `pitches`, `editorial_checklists`, `sensitive_flags`,
+  plus optional task columns (`section_id`, `pitch_id`, `issue_id`,
+  `copy_editor_id`, `fact_checker_id`, `slug`, `assignment_brief jsonb`,
+  `word_count_actual`).
+- Migration `0003_newsroom_rls.sql` adds RLS policies that match the
+  role responsibilities above (writer reads/inserts own pitches; editor
+  triages; leader/admin owns issue planning + sensitive decisions).
+- Seed file `seed_newsroom.sql` mirrors `lib/mock-data.ts`.
+- `lib/api/client.ts`, `mock-adapter.tsx`, `supabase-adapter.ts`, and
+  `lib/hooks/index.ts` gained newsroom methods/hooks. The newsroom UI is
+  unchanged; mock mode keeps working untouched.
+
+## Phase 4 update — newsroom UI on hooks (this update)
+
+Done in `docs/newsroom-persistence-supabase.md` (Migration notes):
+
+- `/pitches`, `/issues`, `/admin/escalations` now read source-of-truth
+  data via `useSections / usePitches / useIssues / useIssueSlots /
+  useTasks / useChecklists`. Mutations call `useApiClient()` and
+  `refetch()` the affected resources.
+- `EditorialChecklist`, `SensitivePanel`, and the relevant parts of
+  `TaskDrawer` were migrated too. The drawer reads tasks via `useTasks`
+  and the checklist via `useEditorialChecklist(task.id)`.
+- New API: `listChecklists(taskIds?)` plus the `useChecklists()` hook
+  for bulk checklist reads (used by the issues readiness derivation).
+- New `/admin` Data mode badge so QA can see whether the active session
+  is mock, Supabase, or supabase-requested-but-fallback.
+
 ## Future work
 
-- Persist all new entities through Supabase. Schema sketch:
-  `sections`, `issues`, `issue_slots`, `pitches`, `editorial_checklists`,
-  `sensitive_flags`, plus `tasks` columns: `section_id`, `pitch_id`,
-  `issue_id`, `copy_editor_id`, `fact_checker_id`, `slug`,
-  `assignment_brief` (jsonb), `sensitive_id`.
-- Real Supabase Auth (still pending from earlier phases).
-- Row-Level Security on the new tables — writers see their pitches and
-  assigned stories; editors see their queue; leaders/admins see all.
+- Real Supabase Auth (still pending from earlier phases). Required for
+  RLS to bind to a real `auth.uid()`.
 - Realtime subscription for the issue board and pitch queue.
+- Migrate submission / review / comment writes off `useStore` (phase 2
+  follow-up).
 - Per-stage SLAs and escalation-on-delay.
 - Photo/visual asset model and rights tracking.
 - Public-site sync (theadvantagejournal.org) for `published` stories.

@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { TaskDrawer } from "@/components/task/task-drawer";
+import { useApiClient } from "@/lib/api/provider";
+import { useTasks } from "@/lib/hooks";
 import { useStore } from "@/lib/store";
 import { useRole } from "@/lib/role-context";
 import type { SensitiveFlag, SensitiveReason, Task } from "@/lib/types";
@@ -29,7 +31,10 @@ const REASON_LABEL: Record<SensitiveReason, string> = {
  * one place.
  */
 export default function EscalationsPage() {
-  const { tasks, users, decideSensitiveFlag } = useStore();
+  const api = useApiClient();
+  const { data: tasksData, refetch: refetchTasks } = useTasks();
+  // Users stays on the store as a sync cache for name lookups.
+  const { users } = useStore();
   const { user, role } = useRole();
   const [tab, setTab] = useState<"open" | "holding" | "cleared" | "all">("open");
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
@@ -38,14 +43,14 @@ export default function EscalationsPage() {
 
   const flagged = useMemo(
     () =>
-      tasks
+      (tasksData ?? [])
         .filter((t) => t.sensitive)
         .sort(
           (a, b) =>
             new Date(b.sensitive!.raisedAt).getTime() -
             new Date(a.sensitive!.raisedAt).getTime()
         ),
-    [tasks]
+    [tasksData]
   );
 
   const filtered =
@@ -113,13 +118,14 @@ export default function EscalationsPage() {
                     ? users.find((u) => u.id === t.sensitive!.decidedById)?.name
                     : undefined
                 }
-                onDecide={(status) =>
-                  decideSensitiveFlag({
+                onDecide={async (status) => {
+                  await api.decideSensitiveFlag({
                     taskId: t.id,
                     decidedById: user.id,
                     status,
-                  })
-                }
+                  });
+                  refetchTasks();
+                }}
                 onOpenTask={() => setOpenTaskId(t.id)}
               />
             ))

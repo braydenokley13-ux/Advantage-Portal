@@ -14,6 +14,11 @@ import type {
   CommentZ,
   ConversationCreateInputZ,
   ConversationZ,
+  EditorialChecklistZ,
+  IssueSlotUpsertInputZ,
+  IssueSlotZ,
+  IssueUpdateInputZ,
+  IssueZ,
   MessageCreateInputZ,
   MessageZ,
   ModerationReportCreateInputZ,
@@ -21,9 +26,18 @@ import type {
   ModerationReportZ,
   NotificationCreateInputZ,
   NotificationZ,
+  PitchConvertInputZ,
+  PitchCreateInputZ,
+  PitchDecideInputZ,
+  PitchStatusZ,
+  PitchZ,
   ReviewCreateInputZ,
   ReviewZ,
   RoleZ,
+  SectionZ,
+  SensitiveFlagDecideInputZ,
+  SensitiveFlagRaiseInputZ,
+  SensitiveFlagZ,
   SubmissionCreateInputZ,
   SubmissionZ,
   TaskCreateInputZ,
@@ -111,6 +125,57 @@ export interface ApiClient {
     patch: ModerationReportUpdateInputZ
   ): Promise<ModerationReportZ[]>;
   hideMessage(messageId: string): Promise<MessageZ>;
+
+  // ── Newsroom: sections ────────────────────────────────────────────────────
+  listSections(): Promise<SectionZ[]>;
+
+  // ── Newsroom: pitches ─────────────────────────────────────────────────────
+  listPitches(filter?: {
+    writerId?: string;
+    status?: PitchStatusZ;
+  }): Promise<PitchZ[]>;
+  createPitch(input: PitchCreateInputZ): Promise<PitchZ>;
+  decidePitch(input: PitchDecideInputZ): Promise<PitchZ>;
+  /** Convert an accepted pitch into a Task assignment. Returns the new Task. */
+  convertPitch(input: PitchConvertInputZ): Promise<TaskZ>;
+
+  // ── Newsroom: issues ──────────────────────────────────────────────────────
+  listIssues(): Promise<IssueZ[]>;
+  getIssue(id: string): Promise<IssueZ | null>;
+  updateIssue(id: string, patch: IssueUpdateInputZ): Promise<IssueZ>;
+  /**
+   * Mark an issue published. Promotes every slotted task that isn't already
+   * complete to status="complete" so the derived stage helper renders it as
+   * `published`.
+   */
+  publishIssue(id: string): Promise<IssueZ>;
+
+  // ── Newsroom: issue slots ─────────────────────────────────────────────────
+  listIssueSlots(issueId?: string): Promise<IssueSlotZ[]>;
+  upsertIssueSlot(input: IssueSlotUpsertInputZ): Promise<IssueSlotZ>;
+  removeIssueSlot(id: string): Promise<void>;
+
+  // ── Newsroom: editorial checklists ────────────────────────────────────────
+  /** Returns null if no checklist exists yet — call `updateChecklistItem`
+   *  to lazily seed one. */
+  getEditorialChecklist(taskId: string): Promise<EditorialChecklistZ | null>;
+  /** Bulk read for surfaces that need many checklists at once (issue
+   *  readiness derivation). Optionally filter by a list of task ids. */
+  listChecklists(taskIds?: string[]): Promise<EditorialChecklistZ[]>;
+  updateChecklistItem(input: {
+    taskId: string;
+    key: string;
+    by: string;
+    checked?: boolean;
+  }): Promise<EditorialChecklistZ>;
+
+  // ── Newsroom: sensitive flags ─────────────────────────────────────────────
+  listSensitiveFlags(filter?: {
+    status?: SensitiveFlagZ["status"];
+    taskId?: string;
+  }): Promise<SensitiveFlagZ[]>;
+  raiseSensitiveFlag(input: SensitiveFlagRaiseInputZ): Promise<SensitiveFlagZ>;
+  decideSensitiveFlag(input: SensitiveFlagDecideInputZ): Promise<SensitiveFlagZ>;
 }
 
 /**

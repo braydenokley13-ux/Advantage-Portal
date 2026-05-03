@@ -3,7 +3,8 @@
 import { useMemo } from "react";
 import { Check, ListChecks } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { useStore } from "@/lib/store";
+import { useApiClient } from "@/lib/api/provider";
+import { useEditorialChecklist } from "@/lib/hooks";
 import { useRole } from "@/lib/role-context";
 import { defaultChecklistItems } from "@/lib/mock-data";
 import type { ChecklistGroup, ChecklistItem, Task } from "@/lib/types";
@@ -22,18 +23,21 @@ const GROUP_LABEL: Record<ChecklistGroup, string> = {
  * the business group; any open sensitive flag pulls the sensitive group.
  */
 export function EditorialChecklist({ task }: { task: Task }) {
-  const { checklists, toggleChecklistItem } = useStore();
+  const api = useApiClient();
+  const { data: list, refetch } = useEditorialChecklist(task.id);
   const { user, role } = useRole();
 
+  // The legacy mock-data ids stay in use for both data modes; supabase
+  // sections use the same slugs so we resolve via slug too.
   const isBusiness =
-    task.sectionId === "sec-business" || task.sectionId === "sec-markets";
+    task.sectionId === "sec-business" ||
+    task.sectionId === "sec-markets";
   const isSensitive = !!task.sensitive;
 
-  const list = checklists.find((c) => c.taskId === task.id);
   // If no list exists yet, render a virtual list so the UI isn't empty —
-  // the first toggle materialises a real one in the store.
+  // the first toggle materialises a real one via api.updateChecklistItem.
   const items = useMemo<ChecklistItem[]>(() => {
-    if (list) return list.items;
+    if (list) return list.items as ChecklistItem[];
     return defaultChecklistItems({ isBusiness, isSensitive });
   }, [list, isBusiness, isSensitive]);
 
@@ -80,13 +84,14 @@ export function EditorialChecklist({ task }: { task: Task }) {
                   <li key={item.key}>
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
                         if (!canToggle) return;
-                        toggleChecklistItem({
+                        await api.updateChecklistItem({
                           taskId: task.id,
                           key: item.key,
                           by: user.id,
                         });
+                        refetch();
                       }}
                       disabled={!canToggle}
                       className={cn(

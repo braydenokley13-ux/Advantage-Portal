@@ -8,6 +8,7 @@ import {
   ScrollText,
   Settings2,
   KeyRound,
+  Database,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +17,10 @@ import { UserList } from "@/components/team/user-list";
 import { useRole } from "@/lib/role-context";
 import { canManageUsers } from "@/lib/permissions";
 import { useStore } from "@/lib/store";
+import {
+  useApiFallbackReason,
+  useApiMode,
+} from "@/lib/api/provider";
 import { format, formatDistanceToNowStrict } from "date-fns";
 import type { Role } from "@/lib/types";
 
@@ -75,6 +80,8 @@ export default function AdminPage() {
         title="Admin"
         description="System controls. Changes here take effect immediately and apply portal-wide."
       />
+
+      <DataModeBadge />
 
       <Card>
         <CardContent className="p-4 flex items-start gap-3">
@@ -180,6 +187,59 @@ export default function AdminPage() {
         {openTasks} open task{openTasks === 1 ? "" : "s"} across the team.
       </p>
     </div>
+  );
+}
+
+/**
+ * Surface the active ApiClient adapter so QA can tell at a glance whether
+ * a given session is exercising mock-mode (no persistence on reload) or
+ * Supabase mode (persists). When supabase mode was requested but the
+ * provider downgraded to mock (missing/invalid creds), the fallback
+ * reason is shown alongside.
+ */
+function DataModeBadge() {
+  const mode = useApiMode();
+  const fallback = useApiFallbackReason();
+  const tone =
+    mode === "supabase"
+      ? "bg-emerald-50 border-emerald-200"
+      : fallback
+        ? "bg-amber-50 border-amber-200"
+        : "bg-secondary border-border";
+  const label =
+    mode === "supabase"
+      ? "Supabase mode — writes persist to the configured Postgres project."
+      : fallback
+        ? "Supabase requested but downgraded to mock — see warning."
+        : "Mock mode — in-memory store, state resets on reload.";
+  const tag =
+    mode === "supabase"
+      ? "Supabase"
+      : fallback
+        ? "Mock (fallback)"
+        : "Mock";
+  const tagTone: "success" | "warning" | "secondary" =
+    mode === "supabase" ? "success" : fallback ? "warning" : "secondary";
+  return (
+    <Card>
+      <CardContent
+        className={`p-4 flex items-start gap-3 border ${tone}`}
+      >
+        <div className="mt-0.5 h-8 w-8 rounded-md bg-background/80 flex items-center justify-center shrink-0 border border-border">
+          <Database className="h-4 w-4 text-muted-foreground" />
+        </div>
+        <div className="text-xs text-muted-foreground leading-relaxed flex-1">
+          <div className="flex items-center gap-2">
+            <p className="text-foreground font-medium">Data mode</p>
+            <Badge variant={tagTone}>{tag}</Badge>
+          </div>
+          <p className="mt-0.5">{label}</p>
+          {fallback && (
+            <p className="mt-1 text-amber-700">{fallback}</p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
