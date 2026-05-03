@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { useApiClient } from "@/lib/api/provider";
 import { useStore } from "@/lib/store";
 import { useRole } from "@/lib/role-context";
 import type { SensitiveReason, Task } from "@/lib/types";
@@ -32,8 +33,19 @@ const REASON_LABEL: Record<SensitiveReason, string> = {
  * the bar to clear is leader/admin only. This is distinct from message
  * moderation (which lives at /admin/moderation).
  */
-export function SensitivePanel({ task }: { task: Task }) {
-  const { raiseSensitiveFlag, decideSensitiveFlag, users } = useStore();
+export function SensitivePanel({
+  task,
+  onChanged,
+}: {
+  task: Task;
+  /** Called after a successful raise / clear / hold so the parent drawer
+   *  can refetch the task and any dependent resources (checklist gets
+   *  the sensitive group seeded on raise). */
+  onChanged?: () => void;
+}) {
+  const api = useApiClient();
+  // Users stays on the store for the sync name lookup.
+  const { users } = useStore();
   const { user, role } = useRole();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState<SensitiveReason>("student_privacy");
@@ -90,28 +102,30 @@ export function SensitivePanel({ task }: { task: Task }) {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() =>
-                  decideSensitiveFlag({
+                onClick={async () => {
+                  await api.decideSensitiveFlag({
                     taskId: task.id,
                     decidedById: user.id,
                     status: "cleared",
                     note: decisionNote.trim() || undefined,
-                  })
-                }
+                  });
+                  onChanged?.();
+                }}
               >
                 <Play className="h-3.5 w-3.5" /> Clear (allow publish)
               </Button>
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() =>
-                  decideSensitiveFlag({
+                onClick={async () => {
+                  await api.decideSensitiveFlag({
                     taskId: task.id,
                     decidedById: user.id,
                     status: "holding",
                     note: decisionNote.trim() || undefined,
-                  })
-                }
+                  });
+                  onChanged?.();
+                }}
               >
                 <Pause className="h-3.5 w-3.5" /> Hold
               </Button>
@@ -123,13 +137,14 @@ export function SensitivePanel({ task }: { task: Task }) {
             <Button
               size="sm"
               variant="ghost"
-              onClick={() =>
-                decideSensitiveFlag({
+              onClick={async () => {
+                await api.decideSensitiveFlag({
                   taskId: task.id,
                   decidedById: user.id,
                   status: f.status === "cleared" ? "holding" : "cleared",
-                })
-              }
+                });
+                onChanged?.();
+              }}
             >
               {f.status === "cleared" ? "Hold again" : "Re-clear"}
             </Button>
@@ -200,8 +215,8 @@ export function SensitivePanel({ task }: { task: Task }) {
           variant="gradient"
           size="sm"
           disabled={!notes.trim()}
-          onClick={() => {
-            raiseSensitiveFlag({
+          onClick={async () => {
+            await api.raiseSensitiveFlag({
               taskId: task.id,
               raisedById: user.id,
               reason,
@@ -209,6 +224,7 @@ export function SensitivePanel({ task }: { task: Task }) {
             });
             setOpen(false);
             setNotes("");
+            onChanged?.();
           }}
         >
           Raise flag
