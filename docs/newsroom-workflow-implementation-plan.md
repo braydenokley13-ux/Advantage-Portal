@@ -163,15 +163,29 @@ Done in `docs/newsroom-persistence-supabase.md`:
   `lib/hooks/index.ts` gained newsroom methods/hooks. The newsroom UI is
   unchanged; mock mode keeps working untouched.
 
+## Phase 4 update — newsroom UI on hooks (this update)
+
+Done in `docs/newsroom-persistence-supabase.md` (Migration notes):
+
+- `/pitches`, `/issues`, `/admin/escalations` now read source-of-truth
+  data via `useSections / usePitches / useIssues / useIssueSlots /
+  useTasks / useChecklists`. Mutations call `useApiClient()` and
+  `refetch()` the affected resources.
+- `EditorialChecklist`, `SensitivePanel`, and the relevant parts of
+  `TaskDrawer` were migrated too. The drawer reads tasks via `useTasks`
+  and the checklist via `useEditorialChecklist(task.id)`.
+- New API: `listChecklists(taskIds?)` plus the `useChecklists()` hook
+  for bulk checklist reads (used by the issues readiness derivation).
+- New `/admin` Data mode badge so QA can see whether the active session
+  is mock, Supabase, or supabase-requested-but-fallback.
+
 ## Future work
 
-- Migrate the newsroom pages (`/pitches`, `/issues`,
-  `/admin/escalations`, the story drawer's checklist + sensitive panels)
-  off `useStore()` and onto the new hooks so Supabase mode persists
-  reads as well as writes.
 - Real Supabase Auth (still pending from earlier phases). Required for
   RLS to bind to a real `auth.uid()`.
 - Realtime subscription for the issue board and pitch queue.
+- Migrate submission / review / comment writes off `useStore` (phase 2
+  follow-up).
 - Per-stage SLAs and escalation-on-delay.
 - Photo/visual asset model and rights tracking.
 - Public-site sync (theadvantagejournal.org) for `published` stories.

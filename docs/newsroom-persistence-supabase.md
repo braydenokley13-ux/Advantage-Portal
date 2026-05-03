@@ -202,6 +202,41 @@ production".
 
 ---
 
+## Migration notes (Phase 4)
+
+The newsroom UI now reads through the hooks in `lib/hooks/index.ts`
+instead of directly from `useStore()`. Mock mode still uses the
+in-memory store under the hood (the mock adapter delegates to it), so
+the offline development experience is unchanged. Supabase mode now
+persists *reads* on reload as well as writes.
+
+Pages and components migrated:
+
+| Surface                                  | Source-of-truth reads via                                    |
+|------------------------------------------|--------------------------------------------------------------|
+| `app/(app)/pitches/page.tsx`             | `usePitches`, `useSections`, `useIssues` + `useApiClient` mutations |
+| `app/(app)/issues/page.tsx`              | `useIssues`, `useIssueSlots`, `useTasks`, `useSections`, `useChecklists` |
+| `app/(app)/admin/escalations/page.tsx`   | `useTasks` (latest active sensitive flag attached to each task) + `useApiClient` |
+| `components/task/editorial-checklist.tsx`| `useEditorialChecklist(task.id)` + `api.updateChecklistItem` |
+| `components/task/sensitive-panel.tsx`    | `api.raiseSensitiveFlag` / `api.decideSensitiveFlag` with parent `onChanged` callback |
+| `components/task/task-drawer.tsx`        | `useTasks` for the open task; `useEditorialChecklist` for stage derivation |
+
+Sync caches kept on `useStore()`:
+
+- `users` — hot per-id name/avatar resolution.
+- `sections` lookups inside the drawer (small reference set).
+- `submissions` — phase 2 gap; submission writes still flow through the store.
+- Extension request flow (`requestExtension` / `decideExtension`) — unchanged this phase.
+- `issues` lookups inside the drawer (read for the badge label only).
+
+A new bulk method `listChecklists(taskIds?)` and the matching
+`useChecklists()` hook were added so the issues page can derive
+readiness across many slotted tasks without N round trips.
+
+A small **Data mode badge** was added to `/admin` showing whether the
+session is running mock, Supabase, or "Supabase requested → fallback to
+mock" so QA can verify which adapter is live before testing.
+
 ## Known limitations
 
 1. **Auth still pending.** The portal still uses the localStorage shim
@@ -210,20 +245,21 @@ production".
    but cannot be functionally tested end-to-end. Adding Supabase Auth
    is documented in `docs/supabase-setup-guide.md` §5–7 and remains the
    highest-priority follow-up.
-2. **Realtime not wired.** Pitches, issues, and sensitive flags will
-   only refresh on `refetch()` until you subscribe via `lib/hooks/index.ts`.
-3. **`updateIssue` patches** in mock mode only honour `status` (we go
+2. **Realtime not wired.** Pitches, issues, sensitive flags, and
+   checklists only refresh on `refetch()` until subscriptions land in
+   `lib/hooks/index.ts`.
+3. **`updateIssue` patches in mock mode only honour `status`** (we go
    through the existing `setIssueStatus` path). Supabase mode persists
-   every field. Mock parity for `name`/`publishDate`/`notes` is a tiny
-   future improvement.
+   every field.
 4. **`upsertIssueSlot` priority change in mock mode** is implemented as
    remove + re-add to keep the store API tight. Supabase mode does a
    real upsert.
-5. **No backfill for existing tasks** — every existing task row gets the
-   new columns at NULL. The seed file fills them for the demo set.
-6. **The newsroom UI still reads from `useStore`.** Hooks are present
-   but the pages don't yet consume them. That's the next migration
-   step (CP7 in this phase only laid the foundation).
+5. **No backfill for existing tasks** — every pre-existing task row
+   gets the new columns at NULL. The seed file fills them for the demo
+   set.
+6. **Submissions / reviews / comments** writes still go through
+   `useStore` directly (phase 2 limitation). Migrating those is the
+   logical follow-up after Supabase Auth.
 
 ---
 
@@ -232,6 +268,7 @@ production".
 ### Mock mode (`NEXT_PUBLIC_DATA_MODE` unset or `mock`)
 
 - [ ] Start `npm run dev`.
+- [ ] Visit `/admin` → Data mode badge reads **Mock**.
 - [ ] Sign in as a writer (Alex Rivera).
   - [ ] Visit `/pitches`, submit a new pitch. Confirm it appears under
         "My pitches".
@@ -259,6 +296,7 @@ production".
       `psql "$SUPABASE_DB_URL" -f supabase/seed_newsroom.sql`.
 - [ ] Set `NEXT_PUBLIC_DATA_MODE=supabase`, fill `NEXT_PUBLIC_SUPABASE_URL`
       and `NEXT_PUBLIC_SUPABASE_ANON_KEY`, restart `npm run dev`.
+- [ ] Visit `/admin` → Data mode badge reads **Supabase**.
 - [ ] Confirm the existing pages (tasks, kanban, calendar, chat,
       moderation queue) still load.
 - [ ] Repeat the mock-mode flows above. After each step **reload the
@@ -273,18 +311,18 @@ production".
   - [ ] Sensitive clear → reload → cleared.
   - [ ] Mark issue published → reload → tasks remain `complete`.
 - [ ] Confirm graceful fallback: temporarily blank
-      `NEXT_PUBLIC_SUPABASE_ANON_KEY` and reload — the console should
-      log the downgrade message and the app should keep working in
-      mock mode.
+      `NEXT_PUBLIC_SUPABASE_ANON_KEY` and reload — the `/admin` Data mode
+      badge should read **Mock (fallback)** with the downgrade reason
+      printed below; the console should also log the warning.
 
 ---
 
 ## Why mock mode wasn't replaced
 
 The product brief calls for additive, backwards-compatible changes —
-mock mode is the offline development surface and the UI source of
-truth for synchronous reads. Every existing UI page still reads from
-`useStore()`; the new hooks layer is the migration path. When auth
-lands and we move pages onto persistence-backed data, the changes are
-mechanical (replace `useStore` reads with the matching hook) and keep
-the same render shape.
+mock mode is the offline development surface. Phase 4 keeps it intact:
+every newsroom page that was migrated to hooks still resolves through
+the mock adapter when `NEXT_PUBLIC_DATA_MODE` is unset, and the mock
+adapter delegates to `useStore()`. So the in-memory store remains the
+authoritative cache for mock mode and the source of name/avatar
+lookups across the app.
