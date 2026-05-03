@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Newspaper,
   CalendarDays,
@@ -15,7 +15,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TaskDrawer } from "@/components/task/task-drawer";
-import { useStore } from "@/lib/store";
+import { useApiClient } from "@/lib/api/provider";
+import {
+  useChecklists,
+  useIssueSlots,
+  useIssues,
+  useSections,
+  useTasks,
+} from "@/lib/hooks";
 import { useRole } from "@/lib/role-context";
 import {
   STAGE_DEFINITIONS,
@@ -35,21 +42,46 @@ const ISSUE_TONE: Record<
 };
 
 export default function IssuesPage() {
-  const { issues, issueSlots, tasks, sections, checklists, setIssueStatus } =
-    useStore();
+  const api = useApiClient();
+  const { data: issuesData, refetch: refetchIssues } = useIssues();
+  const { data: slotsData, refetch: refetchSlots } = useIssueSlots();
+  const { data: tasksData, refetch: refetchTasks } = useTasks();
+  const { data: sectionsData } = useSections();
+  // Bulk checklists for readiness derivation across the slate.
+  const slottedTaskIds = useMemo(
+    () => (slotsData ?? []).map((s) => s.taskId),
+    [slotsData]
+  );
+  const { data: checklistsData } = useChecklists(slottedTaskIds);
+
   const { role } = useRole();
-  const [activeId, setActiveId] = useState<string>(() => {
-    // Default to the next non-published issue.
-    return (
-      issues.find((i) => i.status !== "published")?.id ??
-      issues[0]?.id ??
-      ""
+  const issues = issuesData ?? [];
+  const issueSlots = slotsData ?? [];
+  const tasks = tasksData ?? [];
+  const sections = sectionsData ?? [];
+  const checklists = checklistsData ?? [];
+
+  const [activeId, setActiveId] = useState<string>("");
+  // Default to the next non-published issue once data lands.
+  useEffect(() => {
+    if (activeId) return;
+    if (issues.length === 0) return;
+    setActiveId(
+      issues.find((i) => i.status !== "published")?.id ?? issues[0]!.id
     );
-  });
+  }, [issues, activeId]);
+
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
   const active = issues.find((i) => i.id === activeId);
   const canShip = role === "leader" || role === "admin";
+
+  async function handleShip(issueId: string) {
+    await api.publishIssue(issueId);
+    refetchIssues();
+    refetchTasks();
+    refetchSlots();
+  }
 
   return (
     <div className="container py-6 md:py-8 space-y-6">
@@ -111,9 +143,10 @@ export default function IssuesPage() {
           slots={issueSlots.filter((s) => s.issueId === active.id)}
           tasks={tasks}
           sections={sections}
+          checklists={checklists}
           onOpenTask={setOpenTaskId}
           canShip={canShip}
-          onShip={() => setIssueStatus(active.id, "published")}
+          onShip={() => handleShip(active.id)}
         />
       )}
 
@@ -131,6 +164,7 @@ function IssueDetail({
   slots,
   tasks,
   sections,
+  checklists,
   onOpenTask,
   canShip,
   onShip,
@@ -139,11 +173,11 @@ function IssueDetail({
   slots: IssueSlot[];
   tasks: Task[];
   sections: Section[];
+  checklists: { taskId: string; items: import("@/lib/types").ChecklistItem[]; updatedAt: string }[];
   onOpenTask: (id: string) => void;
   canShip: boolean;
   onShip: () => void;
 }) {
-  const { checklists } = useStore();
 
   const slotted = useMemo(
     () =>
