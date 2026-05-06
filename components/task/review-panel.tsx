@@ -5,7 +5,8 @@ import { CheckCircle2, RefreshCw, Sparkles, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { useStore } from "@/lib/store";
+import { useApiClient } from "@/lib/api/provider";
+import { useReviews } from "@/lib/hooks";
 import { useRole } from "@/lib/role-context";
 import { canReview } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
@@ -88,14 +89,18 @@ export function ReviewPanel({
   onDecided?: () => void;
 }) {
   const { user } = useRole();
-  const { reviews, submitReview } = useStore();
+  const api = useApiClient();
+  const { data: reviews, refetch: refetchReviews } = useReviews(submission?.id);
   const [picked, setPicked] = useState<ReviewDecision | null>(null);
   const [notes, setNotes] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const allowed = canReview({ task, user });
-  const submissionReviews = submission
+  const submissionReviews = submission && reviews
     ? reviews
         .filter((r) => r.submissionId === submission.id)
+        .slice()
         .sort(
           (a, b) =>
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -146,17 +151,26 @@ export function ReviewPanel({
     );
   }
 
-  function decide() {
+  async function decide() {
     if (!picked || !submission) return;
-    submitReview({
-      submissionId: submission.id,
-      reviewerId: user.id,
-      decision: picked,
-      notes: notes.trim() || undefined,
-    });
-    setPicked(null);
-    setNotes("");
-    onDecided?.();
+    setError(null);
+    setPending(true);
+    try {
+      await api.createReview({
+        submissionId: submission.id,
+        reviewerId: user.id,
+        decision: picked,
+        notes: notes.trim() || undefined,
+      });
+      setPicked(null);
+      setNotes("");
+      refetchReviews();
+      onDecided?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to submit decision");
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -228,16 +242,17 @@ export function ReviewPanel({
         }
       />
 
+      {error && <p className="text-xs text-destructive">{error}</p>}
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
-          Reviewing {`v${submission.version}`} of "{task.title}".
+          Reviewing {`v${submission.version}`} of &quot;{task.title}&quot;.
         </p>
         <Button
           variant="gradient"
-          disabled={!picked}
+          disabled={!picked || pending}
           onClick={decide}
         >
-          Submit decision
+          {pending ? "Submitting…" : "Submit decision"}
         </Button>
       </div>
     </div>

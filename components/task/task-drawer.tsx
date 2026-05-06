@@ -34,7 +34,8 @@ import { ReviewPanel } from "./review-panel";
 import { TaskFormDialog } from "./task-form-dialog";
 import { EditorialChecklist } from "./editorial-checklist";
 import { SensitivePanel } from "./sensitive-panel";
-import { useEditorialChecklist, useTasks } from "@/lib/hooks";
+import { useEditorialChecklist, useSubmissions, useTasks } from "@/lib/hooks";
+import { useApiClient } from "@/lib/api/provider";
 import { useStore } from "@/lib/store";
 import { useRole } from "@/lib/role-context";
 import { canEditTask, canReview, canSubmit } from "@/lib/permissions";
@@ -72,17 +73,18 @@ export function TaskDrawer({
   // changes triggered inside the drawer (raise/clear/hold) round-trip via
   // the API and refetch into this view too.
   const { data: tasksData, refetch: refetchTasks } = useTasks();
-  // Sync caches kept on the store: submissions, users, sections, issues,
-  // and the existing extension-request mutators (unchanged this phase).
-  const {
-    submissions,
-    users,
-    sections,
-    issues,
-    requestExtension,
-    decideExtension,
-  } = useStore();
+  // Submissions read through the API hook so the writer's "Submit work" path
+  // round-trips to whichever adapter is active. Mock mode delegates to the
+  // store; supabase mode hits Postgres + the SECURITY DEFINER trigger.
+  const { data: submissionsData, refetch: refetchSubmissions } = useSubmissions(
+    taskId ?? undefined
+  );
+  // Sync caches kept on the store for cheap per-id resolution (users / sections
+  // / issues are small reference sets that pages hydrate elsewhere).
+  const { users, sections, issues } = useStore();
+  const api = useApiClient();
   const tasks = tasksData ?? [];
+  const submissions = submissionsData ?? [];
   const { user } = useRole();
   const [extOpen, setExtOpen] = useState(false);
   const [extDate, setExtDate] = useState("");
@@ -333,8 +335,14 @@ export function TaskDrawer({
                 setExtDate,
                 extReason,
                 setExtReason,
-                requestExtension,
-                decideExtension,
+                requestExtension: async (input) => {
+                  await api.requestExtension(input);
+                  refetchTasks();
+                },
+                decideExtension: async (input) => {
+                  await api.decideExtension(input);
+                  refetchTasks();
+                },
               })}
 
               {task.brief && (
@@ -404,7 +412,13 @@ export function TaskDrawer({
             </TabsContent>
 
             <TabsContent value="submit" className="mt-4 space-y-5">
-              <SubmissionForm task={task} />
+              <SubmissionForm
+                task={task}
+                onSubmitted={() => {
+                  refetchSubmissions();
+                  refetchTasks();
+                }}
+              />
 
               <div className="space-y-2">
                 <h4 className="text-xs uppercase tracking-wide text-muted-foreground font-medium">
@@ -432,7 +446,14 @@ export function TaskDrawer({
                 </p>
               )}
 
-              <ReviewPanel task={task} submission={selected} />
+              <ReviewPanel
+                task={task}
+                submission={selected}
+                onDecided={() => {
+                  refetchTasks();
+                  refetchSubmissions();
+                }}
+              />
 
               {taskSubmissions.length > 1 && (
                 <div>
@@ -495,12 +516,12 @@ function extensionPanel(args: {
     requestedById: string;
     newDeadline: string;
     reason: string;
-  }) => unknown;
+  }) => void | Promise<unknown>;
   decideExtension: (input: {
     taskId: string;
     decidedById: string;
     approve: boolean;
-  }) => void;
+  }) => void | Promise<void>;
 }) {
   const {
     task,

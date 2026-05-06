@@ -259,9 +259,25 @@ mock" so QA can verify which adapter is live before testing.
 5. **No backfill for existing tasks** — every pre-existing task row
    gets the new columns at NULL. The seed file fills them for the demo
    set.
-6. **Submissions / reviews / comments** writes still go through
-   `useStore` directly (phase 2 limitation). Migrating those is the
-   logical follow-up after Supabase Auth.
+6. ~~**Submissions / reviews / comments** writes still go through
+   `useStore` directly (phase 2 limitation).~~ ✅ **Resolved.** Migration
+   `0005_writes_triggers_rls.sql` adds SECURITY DEFINER triggers that
+   flip task status and emit notifications when a submission or review
+   is inserted, plus splits the comments RLS into separate insert /
+   update / delete policies so any task participant can toggle resolve.
+   `lib/api/supabase-adapter.ts` implements `createSubmission`,
+   `createReview`, `createComment`, and `toggleResolveComment`.
+   Components were rewired (`submission-form`, `review-panel`,
+   `comments-panel`, `inline-markdown-viewer`, `submission-history`,
+   `task-drawer` extension flow) to call the API client and refetch
+   via the existing hooks instead of touching `useStore` directly.
+7. **Kanban board + admin pages still read submissions/reviews from
+   `useStore`** as snapshot caches. The mutations now persist via
+   Supabase, but those summary surfaces lag behind until they migrate
+   to `useSubmissions` / `useReviews`. Tracked as the natural
+   follow-up before realtime.
+8. **Notifications inserted by triggers** are not yet realtime —
+   the bell still re-fetches via the polling hook.
 
 ---
 

@@ -6,11 +6,13 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { useStore } from "@/lib/store";
+import { useApiClient } from "@/lib/api/provider";
+import { useComments, useUsers } from "@/lib/hooks";
 import { useRole } from "@/lib/role-context";
 import { canComment } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
 import { format } from "date-fns";
+import type { CommentZ } from "@/lib/contracts";
 import type { Submission, Task } from "@/lib/types";
 
 export function InlineMarkdownViewer({
@@ -21,7 +23,9 @@ export function InlineMarkdownViewer({
   submission: Submission;
 }) {
   const { user } = useRole();
-  const { comments, users, addComment, toggleResolveComment } = useStore();
+  const api = useApiClient();
+  const { data: comments, refetch: refetchComments } = useComments(submission.id);
+  const { data: users } = useUsers();
 
   const [activeLine, setActiveLine] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
@@ -38,14 +42,15 @@ export function InlineMarkdownViewer({
 
   /** All inline comments for THIS submission version, grouped by 1-indexed line. */
   const byLine = useMemo(() => {
-    const m = new Map<number, typeof comments>();
-    comments
+    const m = new Map<number, CommentZ[]>();
+    (comments ?? [])
       .filter(
         (c) =>
           c.submissionId === submission.id &&
           c.inline &&
           typeof c.lineNumber === "number"
       )
+      .slice()
       .sort(
         (a, b) =>
           new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
@@ -82,9 +87,9 @@ export function InlineMarkdownViewer({
     }
   }
 
-  function send(line: number) {
+  async function send(line: number) {
     if (!draft.trim()) return;
-    addComment({
+    await api.createComment({
       submissionId: submission.id,
       authorId: user.id,
       body: draft.trim(),
@@ -93,6 +98,12 @@ export function InlineMarkdownViewer({
     });
     setDraft("");
     setActiveLine(null);
+    refetchComments();
+  }
+
+  async function toggleResolve(commentId: string) {
+    await api.toggleResolveComment(commentId);
+    refetchComments();
   }
 
   return (
@@ -178,7 +189,7 @@ export function InlineMarkdownViewer({
               {hasComments && !collapsed && (
                 <div className="ml-12 mr-4 mb-2 mt-1 space-y-2">
                   {lineComments.map((c) => {
-                    const author = users.find((u) => u.id === c.authorId);
+                    const author = (users ?? []).find((u) => u.id === c.authorId);
                     return (
                       <div
                         key={c.id}
@@ -206,7 +217,7 @@ export function InlineMarkdownViewer({
                           </div>
                           <button
                             type="button"
-                            onClick={() => toggleResolveComment(c.id)}
+                            onClick={() => toggleResolve(c.id)}
                             className={cn(
                               "text-[10px] flex items-center gap-1 rounded-md px-1.5 py-0.5 transition-colors",
                               c.resolved

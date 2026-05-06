@@ -2,7 +2,7 @@
 
 import { FileText, Link2, Type } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { useStore } from "@/lib/store";
+import { useSubmissions } from "@/lib/hooks";
 import { format } from "date-fns";
 import { cn, formatBytes } from "@/lib/utils";
 import type { Submission, SubmissionType } from "@/lib/types";
@@ -22,9 +22,9 @@ export function SubmissionHistory({
   onSelect?: (s: Submission) => void;
   selectedId?: string;
 }) {
-  const { submissions } = useStore();
-  const items = submissions
-    .filter((s) => s.taskId === taskId)
+  const { data: submissions } = useSubmissions(taskId);
+  const items = (submissions ?? [])
+    .slice()
     .sort((a, b) => b.version - a.version);
 
   if (items.length === 0) {

@@ -6,7 +6,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { useStore } from "@/lib/store";
+import { useApiClient } from "@/lib/api/provider";
+import { useComments, useUsers } from "@/lib/hooks";
 import { useRole } from "@/lib/role-context";
 import { canComment } from "@/lib/permissions";
 import { initials, cn } from "@/lib/utils";
@@ -21,15 +22,20 @@ export function CommentsPanel({
   submission?: Submission;
 }) {
   const { user } = useRole();
-  const { comments, users, addComment, toggleResolveComment } = useStore();
+  const api = useApiClient();
+  const { data: comments, refetch: refetchComments } = useComments(submission?.id);
+  const { data: users } = useUsers();
   const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
 
   const allowed = canComment({ task, user });
 
   const { general, inline } = useMemo(() => {
-    if (!submission) return { general: [] as Comment[], inline: [] as Comment[] };
+    if (!submission || !comments)
+      return { general: [] as Comment[], inline: [] as Comment[] };
     const all = comments
       .filter((c) => c.submissionId === submission.id)
+      .slice()
       .sort(
         (a, b) =>
           new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
@@ -48,15 +54,26 @@ export function CommentsPanel({
     );
   }
 
-  function send() {
+  async function send() {
     if (!draft.trim() || !submission) return;
-    addComment({
-      submissionId: submission.id,
-      authorId: user.id,
-      body: draft.trim(),
-      inline: false,
-    });
-    setDraft("");
+    setSending(true);
+    try {
+      await api.createComment({
+        submissionId: submission.id,
+        authorId: user.id,
+        body: draft.trim(),
+        inline: false,
+      });
+      setDraft("");
+      refetchComments();
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function toggleResolve(commentId: string) {
+    await api.toggleResolveComment(commentId);
+    refetchComments();
   }
 
   return (
@@ -82,7 +99,7 @@ export function CommentsPanel({
         ) : (
           <ul className="space-y-3">
             {general.map((c) => {
-              const author = users.find((u) => u.id === c.authorId);
+              const author = (users ?? []).find((u) => u.id === c.authorId);
               return (
                 <li
                   key={c.id}
@@ -108,7 +125,7 @@ export function CommentsPanel({
                     </div>
                     <button
                       type="button"
-                      onClick={() => toggleResolveComment(c.id)}
+                      onClick={() => toggleResolve(c.id)}
                       className={cn(
                         "text-xs flex items-center gap-1 rounded-md px-2 py-1 transition-colors",
                         c.resolved
@@ -138,8 +155,8 @@ export function CommentsPanel({
               <p className="text-[10px] text-muted-foreground">
                 For line-anchored notes, use the inline viewer in the Review tab.
               </p>
-              <Button size="sm" onClick={send} disabled={!draft.trim()}>
-                <Send className="h-3.5 w-3.5" /> Comment
+              <Button size="sm" onClick={send} disabled={!draft.trim() || sending}>
+                <Send className="h-3.5 w-3.5" /> {sending ? "Posting…" : "Comment"}
               </Button>
             </div>
           </div>
@@ -166,7 +183,7 @@ export function CommentsPanel({
         ) : (
           <ul className="space-y-2">
             {inline.map((c) => {
-              const author = users.find((u) => u.id === c.authorId);
+              const author = (users ?? []).find((u) => u.id === c.authorId);
               return (
                 <li
                   key={c.id}
@@ -192,7 +209,7 @@ export function CommentsPanel({
                     </div>
                     <button
                       type="button"
-                      onClick={() => toggleResolveComment(c.id)}
+                      onClick={() => toggleResolve(c.id)}
                       className={cn(
                         "text-[10px] flex items-center gap-1 rounded-md px-1.5 py-0.5",
                         c.resolved

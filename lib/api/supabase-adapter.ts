@@ -10,10 +10,10 @@
  *   4. moderation_reports   — fully implemented (list/create/update/bulk)
  *   5. notifications        — fully implemented (list / mark / push)
  *
- *   submissions / reviews / comments are best-effort: list works against
- *   the schema, create paths throw a clear "Not implemented in Supabase
- *   adapter yet" error so component callers can surface it. The mock
- *   path exercises the full UI flow today; this is the scoped follow-up.
+ *   6. submissions / reviews / comments — fully implemented. createSubmission
+ *      and createReview rely on SECURITY DEFINER triggers (migration 0005)
+ *      to flip task status and emit notifications, so the writer / editor
+ *      never needs UPDATE on `tasks` directly.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ApiError, type ApiClient } from "./client";
@@ -688,7 +688,58 @@ export class SupabaseApiClient implements ApiClient {
     if (error) this.err("listSubmissions", error);
     return (data ?? []).map((r) => rowToSubmission(r as SubmissionRow));
   }
-  createSubmission() { return this.notSupported("createSubmission"); }
+
+  async createSubmission(input: {
+    taskId: string;
+    authorId: string;
+    type: SubmissionZ["type"];
+    content: string;
+    file?: { filename: string; mimeType: string; sizeBytes: number };
+  }): Promise<SubmissionZ> {
+    // The SECURITY DEFINER trigger (migration 0005) flips
+    // `is_current` on prior versions, sets the parent task's
+    // status/current_submission_id, and emits the editor notification.
+    // Here we just compute the next version + insert.
+    const { data: existing, error: vErr } = await this.sb
+      .from("submissions")
+      .select("version")
+      .eq("task_id", input.taskId)
+      .order("version", { ascending: false })
+      .limit(1);
+    if (vErr) this.err("createSubmission(version)", vErr);
+    const nextVersion =
+      ((existing?.[0] as { version?: number } | undefined)?.version ?? 0) + 1;
+
+    const file =
+      input.type === "file" && input.file
+        ? {
+            file_filename: input.file.filename,
+            file_mime_type: input.file.mimeType,
+            file_size_bytes: input.file.sizeBytes,
+          }
+        : {
+            file_filename: null,
+            file_mime_type: null,
+            file_size_bytes: null,
+          };
+
+    const { data, error } = await this.sb
+      .from("submissions")
+      .insert({
+        task_id: input.taskId,
+        type: input.type,
+        version: nextVersion,
+        content: input.content,
+        is_current: true,
+        ...file,
+      })
+      .select(
+        "id, task_id, type, version, content, file_filename, file_mime_type, file_size_bytes, is_current, created_at"
+      )
+      .single();
+    if (error) this.err("createSubmission", error);
+    return rowToSubmission(data as SubmissionRow);
+  }
 
   async listReviews(submissionId?: string): Promise<ReviewZ[]> {
     let q = this.sb
@@ -701,7 +752,30 @@ export class SupabaseApiClient implements ApiClient {
     if (error) this.err("listReviews", error);
     return (data ?? []).map((r) => rowToReview(r as ReviewRow));
   }
-  createReview() { return this.notSupported("createReview"); }
+
+  async createReview(input: {
+    submissionId: string;
+    reviewerId: string;
+    decision: ReviewZ["decision"];
+    notes?: string;
+  }): Promise<ReviewZ> {
+    // Trigger (migration 0005) takes care of flipping the parent task's
+    // status to complete / in_progress and notifying the writer.
+    const { data, error } = await this.sb
+      .from("reviews")
+      .insert({
+        submission_id: input.submissionId,
+        reviewer_id: input.reviewerId,
+        decision: input.decision,
+        notes: input.notes ?? null,
+      })
+      .select(
+        "id, submission_id, reviewer_id, decision, notes, created_at"
+      )
+      .single();
+    if (error) this.err("createReview", error);
+    return rowToReview(data as ReviewRow);
+  }
 
   async listComments(submissionId?: string): Promise<CommentZ[]> {
     let q = this.sb
@@ -714,8 +788,54 @@ export class SupabaseApiClient implements ApiClient {
     if (error) this.err("listComments", error);
     return (data ?? []).map((r) => rowToComment(r as CommentRow));
   }
-  createComment() { return this.notSupported("createComment"); }
-  toggleResolveComment() { return this.notSupported("toggleResolveComment"); }
+
+  async createComment(input: {
+    submissionId: string;
+    authorId: string;
+    body: string;
+    inline?: boolean;
+    lineNumber?: number;
+  }): Promise<CommentZ> {
+    const isInline = input.inline ?? input.lineNumber !== undefined;
+    if (isInline && !input.lineNumber) {
+      throw new ApiError("Inline comments require a lineNumber", 400);
+    }
+    const { data, error } = await this.sb
+      .from("comments")
+      .insert({
+        submission_id: input.submissionId,
+        author_id: input.authorId,
+        body: input.body,
+        inline: isInline,
+        line_number: isInline ? input.lineNumber ?? null : null,
+        resolved: false,
+      })
+      .select(
+        "id, submission_id, author_id, body, inline, line_number, resolved, created_at"
+      )
+      .single();
+    if (error) this.err("createComment", error);
+    return rowToComment(data as CommentRow);
+  }
+
+  async toggleResolveComment(id: string): Promise<CommentZ> {
+    const { data: existing, error: e1 } = await this.sb
+      .from("comments")
+      .select("resolved")
+      .eq("id", id)
+      .single();
+    if (e1) this.err("toggleResolveComment(read)", e1);
+    const { data, error } = await this.sb
+      .from("comments")
+      .update({ resolved: !(existing as { resolved: boolean }).resolved })
+      .eq("id", id)
+      .select(
+        "id, submission_id, author_id, body, inline, line_number, resolved, created_at"
+      )
+      .single();
+    if (error) this.err("toggleResolveComment", error);
+    return rowToComment(data as CommentRow);
+  }
 
   // ── Conversations + messages ───────────────────────────────────────────
   async listConversations(): Promise<ConversationZ[]> {

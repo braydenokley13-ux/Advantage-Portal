@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useStore } from "@/lib/store";
+import { useApiClient } from "@/lib/api/provider";
 import { useRole } from "@/lib/role-context";
 import { canSubmit } from "@/lib/permissions";
 import type { SubmissionFileMeta, SubmissionType, Task } from "@/lib/types";
@@ -19,7 +19,9 @@ export function SubmissionForm({
   onSubmitted?: () => void;
 }) {
   const { user } = useRole();
-  const { createSubmission } = useStore();
+  const api = useApiClient();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const allowed = canSubmit({ task, user });
 
@@ -58,21 +60,29 @@ export function SubmissionForm({
     return true;
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     const content =
       tab === "inline" ? inline : tab === "google_doc" ? docUrl : fileName;
-    createSubmission({
-      taskId: task.id,
-      authorId: user.id,
-      type: tab,
-      content,
-      file: tab === "file" && fileMeta ? fileMeta : undefined,
-    });
-    setInline("");
-    setDocUrl("");
-    setFileName("");
-    setFileMeta(null);
-    onSubmitted?.();
+    setError(null);
+    setPending(true);
+    try {
+      await api.createSubmission({
+        taskId: task.id,
+        authorId: user.id,
+        type: tab,
+        content,
+        file: tab === "file" && fileMeta ? fileMeta : undefined,
+      });
+      setInline("");
+      setDocUrl("");
+      setFileName("");
+      setFileMeta(null);
+      onSubmitted?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to submit");
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -143,6 +153,7 @@ export function SubmissionForm({
         </TabsContent>
       </Tabs>
 
+      {error && <p className="text-xs text-destructive">{error}</p>}
       <div className="flex items-center justify-between pt-1">
         <p className="text-xs text-muted-foreground">
           Submitting creates a new version and sends it to your editor.
@@ -150,9 +161,9 @@ export function SubmissionForm({
         <Button
           variant="gradient"
           onClick={handleSubmit}
-          disabled={disabled()}
+          disabled={disabled() || pending}
         >
-          Submit work
+          {pending ? "Submitting…" : "Submit work"}
         </Button>
       </div>
     </div>
