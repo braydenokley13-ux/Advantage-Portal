@@ -239,12 +239,14 @@ mock" so QA can verify which adapter is live before testing.
 
 ## Known limitations
 
-1. **Auth still pending.** The portal still uses the localStorage shim
-   from phase 1; `auth.uid()` only matches `public.users.id` if you
-   wire Supabase Auth. Until that's done, RLS is structurally correct
-   but cannot be functionally tested end-to-end. Adding Supabase Auth
-   is documented in `docs/supabase-setup-guide.md` §5–7 and remains the
-   highest-priority follow-up.
+1. ~~**Auth still pending.**~~ ✅ **Resolved.** Supabase Auth is wired
+   in `lib/session.tsx` and `supabase/migrations/0004_auth_user_mirror.sql`
+   installs the `handle_new_user` trigger so every `auth.users` row
+   gets a matching `public.users` row with `id = auth.uid()`. RLS
+   policies in `0001_init.sql` and `0003_newsroom_rls.sql` are now
+   functionally testable end-to-end. See
+   `docs/supabase-setup-guide.md` §7 for the manual signup/login
+   smoke test.
 2. **Realtime not wired.** Pitches, issues, sensitive flags, and
    checklists only refresh on `refetch()` until subscriptions land in
    `lib/hooks/index.ts`.

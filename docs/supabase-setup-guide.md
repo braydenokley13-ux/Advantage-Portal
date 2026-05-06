@@ -128,54 +128,36 @@ public.users where id = auth.uid()` subquery — slower but simpler.
 
 ## 5. Connecting Next.js to Supabase
 
-Create two clients — one for the browser, one for the server. Place
-them under `lib/supabase/`.
+✅ **Implemented.** The project ships with both clients:
 
-```ts
-// lib/supabase/browser.ts
-import { createBrowserClient } from "@supabase/ssr";
+- `lib/supabase/browser.ts` → `getSupabaseBrowserClient()` returns a
+  cached `SupabaseClient` (or `null` in mock mode).
+- `lib/supabase/server.ts`  → `getSupabaseServerClient()` returns a
+  cookie-aware client for route handlers and server components (or
+  `null` in mock mode).
+- `lib/supabase/env.ts`     → `resolveDataMode()` reads
+  `NEXT_PUBLIC_DATA_MODE` plus URL/key envs. If supabase mode is
+  requested but creds are missing/invalid, it downgrades to mock with
+  a console warning.
 
-export function createSupabaseBrowserClient() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-}
-```
+`lib/session.tsx` now branches on `resolveDataMode()`:
 
-```ts
-// lib/supabase/server.ts
-import { cookies } from "next/headers";
-import { createServerClient } from "@supabase/ssr";
+| Mode       | Backing                                                      |
+|------------|--------------------------------------------------------------|
+| `mock`     | Existing localStorage demo-picker (used by tests / Storybook).|
+| `supabase` | Subscribes to `supabase.auth.onAuthStateChange`, fetches the matching `public.users` row to populate `currentUser`. |
 
-export function createSupabaseServerClient() {
-  const cookieStore = cookies();
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get: (name) => cookieStore.get(name)?.value,
-        set: (name, value, opts) => cookieStore.set({ name, value, ...opts }),
-        remove: (name, opts) =>
-          cookieStore.set({ name, value: "", ...opts, maxAge: 0 }),
-      },
-    }
-  );
-}
-```
+Both modes expose the same `useSession()` shape, plus three new
+async methods that work in supabase mode:
 
-Then rewrite the body of `lib/session.tsx`:
+- `signInWithPassword(email, password)`
+- `signInWithMagicLink(email, redirectTo?)`
+- `signUpWithPassword(email, password, name)`
 
-- Replace the `useState<SessionState>` initializer with a Supabase
-  subscription using `supabase.auth.onAuthStateChange`.
-- `signInAsDemoUser` becomes the real sign-in entry point — for the
-  invite flow that's `signInWithOtp({ email })`, for password it is
-  `signInWithPassword({ email, password })`.
-- `signOut` calls `supabase.auth.signOut()`.
-- Keep the same `{ currentUser, role, isAuthenticated, isReady }`
-  return shape so `useSession`, `useRole`, `AuthGate`, and every page
-  keep working.
+The login page (`app/login/page.tsx`) renders the demo picker in mock
+mode and an email + password / magic-link form in supabase mode.
+Magic-link callbacks land at `/auth/callback`, which exchanges the
+code for a session cookie and redirects on.
 
 ## 6. Protected routes
 
@@ -228,43 +210,97 @@ export const config = {
 
 ## 7. Mapping Supabase user → app user record
 
-Every `auth.users` row needs a matching `public.users` row. Two
-options:
+✅ **Implemented in `supabase/migrations/0004_auth_user_mirror.sql`.**
 
-- **Trigger** (recommended, atomic):
+The migration:
 
-```sql
-create function public.handle_new_user()
-returns trigger language plpgsql security definer as $$
-begin
-  insert into public.users (id, name, email, role, active)
-  values (
-    new.id,
-    coalesce(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
-    new.email,
-    'writer',
-    true
-  );
-  return new;
-end; $$;
+1. Drops the `gen_random_uuid()` default on `public.users.id` so
+   `auth.uid()` is the authoritative source of new ids.
+2. Adds a foreign key `public.users.id → auth.users.id` (skipped
+   gracefully on standalone Postgres environments without an `auth`
+   schema, e.g. CI).
+3. Installs `public.handle_new_user()` — `security definer`, runs on
+   every new `auth.users` row. It populates `name` from
+   `raw_user_meta_data.name` (falling back to the email local-part),
+   `role` from `raw_user_meta_data.role` (falling back to `writer`),
+   and is idempotent (`on conflict (id) do update`) so re-runs are
+   safe.
+4. Adds the trigger `on_auth_user_created` on `auth.users`.
+5. Adds a diagnostic view `public.auth_users_unmirrored` listing any
+   `auth.users` rows that don't have a matching `public.users` row.
 
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();
+Apply with:
+
+```bash
+npx supabase db push   # picks up 0001 + 0002 + 0003 + 0004
+# or paste 0004_auth_user_mirror.sql into the SQL editor
 ```
 
-- **Server-action upsert** at first sign-in if you'd rather keep
-  business logic out of triggers.
-
-Either way, the frontend's `useSession().currentUser` resolves by:
+The frontend's `useSession().currentUser` resolves via:
 
 ```ts
-const { data: profile } = await supabase
+const { data: profile } = await client
   .from("users")
-  .select("id, name, email, role, active, avatar_url")
+  .select("id, name, email, role, avatar_url, active")
   .eq("id", supabaseUser.id)
-  .single();
+  .maybeSingle();
 ```
+
+(Implemented in `lib/session.tsx → fetchProfile`.)
+
+### Promoting the first admin
+
+`handle_new_user` always inserts new accounts as `writer`. To bootstrap
+an admin:
+
+```sql
+update public.users set role = 'admin' where email = 'you@yourdomain.com';
+```
+
+After the role is updated, sign out and back in so the JWT picks up
+the new claim (or rely on the `current_app_role()` helper, which
+reads `public.users.role` as a fallback).
+
+### Testing signup / login locally
+
+1. Apply migrations (see above) and confirm RLS is enabled on
+   `public.users`.
+2. Set in `.env.local`:
+   ```bash
+   NEXT_PUBLIC_DATA_MODE=supabase
+   NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOi...
+   NEXT_PUBLIC_APP_URL=http://localhost:3000
+   ```
+3. Restart `npm run dev`.
+4. Visit `/login`. You should see the email + password / magic-link
+   form (NOT the demo picker).
+5. **Sign up:** click *Sign up*, enter a display name + email +
+   password (≥ 8 chars). If "Confirm email" is enabled in Supabase,
+   check the inbox; otherwise you're signed in immediately.
+6. **Sign in:** click *Sign in*, enter the same email + password.
+7. **Magic link:** click *Magic link*, enter your email, click the
+   link in the inbox. It lands on `/auth/callback`, which sets the
+   session cookie and redirects to `/dashboard`.
+8. After signing in, run in the SQL editor:
+   ```sql
+   select id, name, email, role, active from public.users
+   where id = auth.uid();
+   ```
+   You should get exactly one row with the correct email and
+   `role = 'writer'` (unless you bootstrapped an admin above).
+9. Sign out via the avatar menu in the top bar; you should land back
+   on `/login`.
+
+### Resetting local state
+
+- Wipe the Supabase auth users (Auth → Users → delete) — the FK
+  cascade will remove the matching `public.users` row.
+- Clear browser cookies for `http://localhost:3000` to drop any
+  cached Supabase session cookie.
+- For mock mode resets, clear `localStorage` key
+  `advantage-portal:session` (or click *Sign out* and pick a fresh
+  demo user).
 
 ## 8. RLS strategy
 
