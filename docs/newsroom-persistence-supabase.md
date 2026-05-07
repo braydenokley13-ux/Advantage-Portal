@@ -271,11 +271,18 @@ mock" so QA can verify which adapter is live before testing.
    `comments-panel`, `inline-markdown-viewer`, `submission-history`,
    `task-drawer` extension flow) to call the API client and refetch
    via the existing hooks instead of touching `useStore` directly.
-7. **Kanban board + admin pages still read submissions/reviews from
-   `useStore`** as snapshot caches. The mutations now persist via
-   Supabase, but those summary surfaces lag behind until they migrate
-   to `useSubmissions` / `useReviews`. Tracked as the natural
-   follow-up before realtime.
+7. ~~**Kanban board + admin pages still read submissions/reviews from
+   `useStore`**~~ ✅ **Resolved for kanban / dashboard / reviews queue.**
+   `components/kanban/board.tsx`, `app/(app)/dashboard/page.tsx`, and
+   `app/(app)/reviews/page.tsx` now read tasks / submissions / reviews /
+   pitches / issues / issue_slots / checklists through the API hooks
+   (`useTasks`, `useSubmissions`, `useReviews`, `usePitches`, `useIssues`,
+   `useIssueSlots`, `useChecklists`). The kanban's setTaskStatus drag
+   action routes through `useApiClient().setTaskStatus` and refetches.
+   `app/(app)/admin/page.tsx` still reads `users` / `tasks` /
+   `notifications` from `useStore` for synthetic audit-log + counts —
+   carried over as the lowest-impact follow-up; admin role isn't on
+   the writer/editor critical path.
 8. **Notifications inserted by triggers** are not yet realtime —
    the bell still re-fetches via the polling hook.
 

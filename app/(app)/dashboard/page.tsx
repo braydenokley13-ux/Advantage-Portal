@@ -33,12 +33,16 @@ import { TaskFormDialog } from "@/components/task/task-form-dialog";
 import { PageHeader } from "@/components/page-header";
 import { useRole } from "@/lib/role-context";
 import {
+  useChecklists,
+  useIssues,
+  useIssueSlots,
   useMessages,
   useNotifications,
+  usePitches,
+  useTasks,
   useUsers,
   useVisibleTasks,
 } from "@/lib/hooks";
-import { useStore } from "@/lib/store";
 import { canCreateTask } from "@/lib/permissions";
 import { initials } from "@/lib/utils";
 import { isPast, isWithinInterval, addDays, format } from "date-fns";
@@ -52,7 +56,16 @@ export default function DashboardPage() {
   const { data: notificationsData } = useNotifications();
   const { data: usersData } = useUsers();
   const { data: messagesData } = useMessages();
-  const { tasks: allTasks, pitches, issues, issueSlots, checklists } = useStore();
+  const { data: allTasksData } = useTasks();
+  const { data: pitchesData } = usePitches();
+  const { data: issuesData } = useIssues();
+  const { data: issueSlotsData } = useIssueSlots();
+  const { data: checklistsData } = useChecklists();
+  const allTasks = allTasksData ?? [];
+  const pitches = pitchesData ?? [];
+  const issues = issuesData ?? [];
+  const issueSlots = issueSlotsData ?? [];
+  const checklists = checklistsData ?? [];
   const notifications = notificationsData ?? [];
   const users = usersData ?? [];
   const messages = messagesData ?? [];

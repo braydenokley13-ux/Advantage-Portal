@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { TaskCard } from "./task-card";
 import { TaskDrawer } from "@/components/task/task-drawer";
 import { useRole } from "@/lib/role-context";
-import { useStore } from "@/lib/store";
+import { useApiClient } from "@/lib/api/provider";
+import { useReviews, useSubmissions, useTasks } from "@/lib/hooks";
 import { visibleTasks } from "@/lib/visibility";
 import {
   STATUS_LABELS,
@@ -24,7 +25,13 @@ type BlockedToast = { title: string; reason: string } | null;
 
 export function KanbanBoard() {
   const { role, user } = useRole();
-  const { tasks, submissions, reviews, setTaskStatus } = useStore();
+  const api = useApiClient();
+  const { data: tasksData, refetch: refetchTasks } = useTasks();
+  const { data: submissionsData } = useSubmissions();
+  const { data: reviewsData } = useReviews();
+  const tasks = tasksData ?? [];
+  const submissions = submissionsData ?? [];
+  const reviews = reviewsData ?? [];
   const submissionTaskMap = useMemo(() => {
     const m = new Map<string, string>();
     for (const s of submissions) m.set(s.id, s.taskId);
@@ -72,7 +79,7 @@ export function KanbanBoard() {
     setHoveredCol(null);
   }
 
-  function handleDrop(to: TaskStatus, e: React.DragEvent) {
+  async function handleDrop(to: TaskStatus, e: React.DragEvent) {
     e.preventDefault();
     setHoveredCol(null);
     const id = e.dataTransfer.getData("text/plain");
@@ -104,7 +111,16 @@ export function KanbanBoard() {
       return;
     }
 
-    setTaskStatus(task.id, to);
+    try {
+      await api.setTaskStatus(task.id, to);
+    } catch (err) {
+      showBlocked(
+        task.title,
+        err instanceof Error ? err.message : "Failed to update status."
+      );
+      return;
+    }
+    refetchTasks();
   }
 
   return (

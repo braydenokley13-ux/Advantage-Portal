@@ -15,8 +15,7 @@ import { TaskRow } from "@/components/task/task-row";
 import { TaskDrawer } from "@/components/task/task-drawer";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { useRole } from "@/lib/role-context";
-import { useStore } from "@/lib/store";
-import { useVisibleTasks } from "@/lib/hooks";
+import { useReviews, useVisibleTasks } from "@/lib/hooks";
 import type { Task } from "@/lib/types";
 import { isPast } from "date-fns";
 
@@ -29,8 +28,9 @@ import { isPast } from "date-fns";
 export default function ReviewsPage() {
   const { role } = useRole();
   const { data } = useVisibleTasks();
-  const { reviews } = useStore();
+  const { data: reviewsData } = useReviews();
   const tasks = data ?? [];
+  const reviews = reviewsData ?? [];
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
   const groups = useMemo(() => {
