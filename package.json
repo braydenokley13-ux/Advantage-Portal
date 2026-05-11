@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:env": "node scripts/check-env.mjs",
+    "check:env:prod": "node scripts/check-env.mjs --prod",
+    "preflight": "npm run check:env && npm run typecheck && npm run lint && npm run build"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.1",
