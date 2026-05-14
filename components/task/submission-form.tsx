@@ -28,6 +28,8 @@ export function SubmissionForm({
   const [docUrl, setDocUrl] = useState("");
   const [fileName, setFileName] = useState("");
   const [fileMeta, setFileMeta] = useState<SubmissionFileMeta | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (!allowed) {
     return (
@@ -58,21 +60,40 @@ export function SubmissionForm({
     return true;
   }
 
-  function handleSubmit() {
-    const content =
-      tab === "inline" ? inline : tab === "google_doc" ? docUrl : fileName;
-    createSubmission({
-      taskId: task.id,
-      authorId: user.id,
-      type: tab,
-      content,
-      file: tab === "file" && fileMeta ? fileMeta : undefined,
-    });
-    setInline("");
-    setDocUrl("");
-    setFileName("");
-    setFileMeta(null);
-    onSubmitted?.();
+  async function handleSubmit() {
+    if (busy || disabled()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const content =
+        tab === "inline"
+          ? inline.trim()
+          : tab === "google_doc"
+            ? docUrl.trim()
+            : fileName;
+      await Promise.resolve(
+        createSubmission({
+          taskId: task.id,
+          authorId: user.id,
+          type: tab,
+          content,
+          file: tab === "file" && fileMeta ? fileMeta : undefined,
+        })
+      );
+      setInline("");
+      setDocUrl("");
+      setFileName("");
+      setFileMeta(null);
+      onSubmitted?.();
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Couldn't save that submission. Please try again."
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -146,15 +167,25 @@ export function SubmissionForm({
       <div className="flex items-center justify-between pt-1">
         <p className="text-xs text-muted-foreground">
           Submitting creates a new version and sends it to your editor.
+          {tab === "file" && (
+            <>
+              {" "}
+              File uploads aren&apos;t persisted yet — your editor sees
+              the file name and metadata only.
+            </>
+          )}
         </p>
         <Button
           variant="gradient"
           onClick={handleSubmit}
-          disabled={disabled()}
+          disabled={disabled() || busy}
         >
-          Submit work
+          {busy ? "Submitting…" : "Submit work"}
         </Button>
       </div>
+      {error && (
+        <p className="text-xs text-red-600 pt-1">{error}</p>
+      )}
     </div>
   );
 }
