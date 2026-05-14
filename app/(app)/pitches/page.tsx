@@ -51,8 +51,9 @@ export default function PitchesPage() {
   const { data: sectionsData } = useSections();
   const { data: pitchesData, refetch: refetchPitches } = usePitches();
   const { data: issuesData } = useIssues();
-  // Users stays on the store as a sync cache for name lookups.
-  const { users } = useStore();
+  // Users + tasks stay on the store as a sync cache for cross-entity
+  // lookups (writer names, pitch → task → issue resolution).
+  const { users, tasks: tasksForLookup } = useStore();
 
   const sections = sectionsData ?? [];
   const pitches = pitchesData ?? [];
@@ -195,7 +196,17 @@ export default function PitchesPage() {
           ) : (
             myPitches.map((p) => {
               const sec = sections.find((s) => s.id === p.sectionId);
-              const issue = issues.find((i) => i.id === p.taskId);
+              // Pitches don't carry an `issueId` directly — they carry the
+              // converted task id once accepted. Resolve issue via that
+              // task so the My-pitches card shows the right edition.
+              const issue = p.taskId
+                ? (() => {
+                    const t = tasksForLookup.find((x) => x.id === p.taskId);
+                    return t?.issueId
+                      ? issues.find((i) => i.id === t.issueId)
+                      : undefined;
+                  })()
+                : undefined;
               return (
                 <Card key={p.id}>
                   <CardHeader className="flex-row items-start justify-between space-y-0">
@@ -253,15 +264,21 @@ function PitchForm({
   const [deadline, setDeadline] = useState("");
   const [note, setNote] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const valid =
     headline.trim().length > 6 &&
     angle.trim().length > 6 &&
-    whyNow.trim().length > 4 &&
+    whyNow.trim().length >= 8 &&
     sectionId.length > 0;
 
+  const todayIso = new Date().toISOString().slice(0, 10);
+
   async function handleSubmit() {
-    if (!valid) return;
+    if (!valid || busy) return;
+    setBusy(true);
+    setError(null);
     try {
       await api.createPitch({
         proposedHeadline: headline.trim(),
@@ -290,7 +307,13 @@ function PitchForm({
       setNote("");
       setTimeout(() => setSubmitted(false), 2400);
     } catch (e) {
-      console.error("createPitch failed", e);
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Couldn't send that pitch. Please try again."
+      );
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -387,6 +410,7 @@ function PitchForm({
             <Input
               id="p-deadline"
               type="date"
+              min={todayIso}
               value={deadline}
               onChange={(e) => setDeadline(e.target.value)}
             />
@@ -412,15 +436,16 @@ function PitchForm({
           </p>
           <Button
             variant="gradient"
-            disabled={!valid}
+            disabled={!valid || busy}
             onClick={handleSubmit}
           >
-            <Send className="h-4 w-4" /> Submit pitch
+            <Send className="h-4 w-4" /> {busy ? "Sending…" : "Submit pitch"}
           </Button>
         </div>
+        {error && <p className="text-xs text-red-600">{error}</p>}
         {submitted && (
           <p className="text-xs text-emerald-700">
-            Pitch sent to the editor queue. You'll see it in “My pitches.”
+            Pitch sent to the editor queue. You'll see it in &ldquo;My pitches.&rdquo;
           </p>
         )}
       </CardContent>
@@ -444,7 +469,9 @@ function PitchReviewCard({
   const { user, role } = useRole();
   const sec = sections.find((s) => s.id === pitch.sectionId);
   const writer = users.find((u) => u.id === pitch.writerId);
-  const editors = users.filter((u) => u.role === "editor");
+  const editors = users.filter(
+    (u) => u.role === "editor" && u.active !== false
+  );
 
   const [note, setNote] = useState("");
   const [showConvert, setShowConvert] = useState(false);
@@ -455,7 +482,59 @@ function PitchReviewCard({
     if (!pitch.deadlinePref) d.setDate(d.getDate() + 7);
     return d.toISOString().slice(0, 10);
   });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  async function decide(accept: boolean) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.decidePitch({
+        pitchId: pitch.id,
+        decidedById: user.id,
+        accept,
+        note: note.trim() || undefined,
+      });
+      onChanged();
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Couldn't save that decision. Try again."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function convert() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.convertPitch({
+        pitchId: pitch.id,
+        editorId: editorId || undefined,
+        deadline: new Date(`${deadline}T17:00:00`).toISOString(),
+        leaderId: user.id,
+        issueId: issueId || undefined,
+      });
+      setShowConvert(false);
+      onChanged();
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Couldn't convert this pitch. Try again."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const canDecide =
+    role === "editor" || role === "leader" || role === "admin";
   const canConvert = role === "leader" || role === "admin";
 
   return (
@@ -517,53 +596,52 @@ function PitchReviewCard({
         )}
 
         <div className="space-y-2 border-t border-border pt-3">
-          <Textarea
-            placeholder="Optional note for the writer (will be shared on accept/decline)."
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            className="min-h-[60px]"
-          />
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                await api.decidePitch({
-                  pitchId: pitch.id,
-                  decidedById: user.id,
-                  accept: true,
-                  note: note.trim() || undefined,
-                });
-                onChanged();
-              }}
-            >
-              <CheckCircle2 className="h-3.5 w-3.5" /> Accept
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                await api.decidePitch({
-                  pitchId: pitch.id,
-                  decidedById: user.id,
-                  accept: false,
-                  note: note.trim() || undefined,
-                });
-                onChanged();
-              }}
-            >
-              <XCircle className="h-3.5 w-3.5" /> Decline
-            </Button>
-            {canConvert && (
-              <Button
-                variant="gradient"
-                size="sm"
-                onClick={() => setShowConvert((v) => !v)}
-              >
-                <CornerUpRight className="h-3.5 w-3.5" /> Convert to assignment
-              </Button>
-            )}
-          </div>
+          {canDecide ? (
+            <>
+              <Textarea
+                placeholder="Optional note for the writer (will be shared on accept/decline)."
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                className="min-h-[60px]"
+                disabled={busy}
+              />
+              {error && (
+                <p className="text-xs text-red-600">{error}</p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => decide(true)}
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Accept
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => decide(false)}
+                >
+                  <XCircle className="h-3.5 w-3.5" /> Decline
+                </Button>
+                {canConvert && (
+                  <Button
+                    variant="gradient"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => setShowConvert((v) => !v)}
+                  >
+                    <CornerUpRight className="h-3.5 w-3.5" /> Convert to assignment
+                  </Button>
+                )}
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Only editors, leaders, and admins can decide on pitches.
+            </p>
+          )}
 
           {canConvert && showConvert && (
             <div className="rounded-lg border border-border bg-card p-3 grid sm:grid-cols-3 gap-3">
@@ -607,18 +685,8 @@ function PitchReviewCard({
                 <Button
                   variant="gradient"
                   size="sm"
-                  disabled={!deadline}
-                  onClick={async () => {
-                    await api.convertPitch({
-                      pitchId: pitch.id,
-                      editorId: editorId || undefined,
-                      deadline: new Date(`${deadline}T17:00:00`).toISOString(),
-                      leaderId: user.id,
-                      issueId: issueId || undefined,
-                    });
-                    setShowConvert(false);
-                    onChanged();
-                  }}
+                  disabled={!deadline || busy}
+                  onClick={convert}
                 >
                   Create assignment
                 </Button>
