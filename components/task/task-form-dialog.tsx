@@ -56,6 +56,7 @@ export function TaskFormDialog({
   const [color, setColor] = useState<TaskColor>("green");
   const [wordCountTarget, setWordCountTarget] = useState<string>("");
   const [citationsRequired, setCitationsRequired] = useState<boolean>(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -84,42 +85,53 @@ export function TaskFormDialog({
     }
   }, [open, mode, task, writers]);
 
+  const todayIso = format(new Date(), "yyyy-MM-dd");
+
   const valid =
     title.trim().length > 0 &&
     instructions.trim().length > 0 &&
     writerId.length > 0 &&
-    deadline.length > 0;
+    deadline.length > 0 &&
+    // Reject deadlines in the past at the form level. Existing tasks
+    // being edited keep their original min so a stale (already-past)
+    // deadline doesn't block other field edits.
+    (mode === "edit" || deadline >= todayIso);
 
   function submit() {
-    if (!valid || !allowed) return;
-    const iso = new Date(`${deadline}T17:00:00`).toISOString();
-    const wc = wordCountTarget.trim()
-      ? Math.max(1, Math.floor(Number(wordCountTarget)))
-      : undefined;
-    if (mode === "create") {
-      createTask({
-        title: title.trim(),
-        instructions: instructions.trim(),
-        writerId,
-        editorId: editorId || undefined,
-        deadline: iso,
-        color,
-        wordCountTarget: wc,
-        citationsRequired: citationsRequired || undefined,
-      });
-    } else if (task) {
-      updateTask(task.id, {
-        title: title.trim(),
-        instructions: instructions.trim(),
-        writerId,
-        editorId: editorId || undefined,
-        deadline: iso,
-        color,
-        wordCountTarget: wc,
-        citationsRequired: citationsRequired || undefined,
-      });
+    if (!valid || !allowed || busy) return;
+    setBusy(true);
+    try {
+      const iso = new Date(`${deadline}T17:00:00`).toISOString();
+      const wc = wordCountTarget.trim()
+        ? Math.max(1, Math.floor(Number(wordCountTarget)))
+        : undefined;
+      if (mode === "create") {
+        createTask({
+          title: title.trim(),
+          instructions: instructions.trim(),
+          writerId,
+          editorId: editorId || undefined,
+          deadline: iso,
+          color,
+          wordCountTarget: wc,
+          citationsRequired: citationsRequired || undefined,
+        });
+      } else if (task) {
+        updateTask(task.id, {
+          title: title.trim(),
+          instructions: instructions.trim(),
+          writerId,
+          editorId: editorId || undefined,
+          deadline: iso,
+          color,
+          wordCountTarget: wc,
+          citationsRequired: citationsRequired || undefined,
+        });
+      }
+      onOpenChange(false);
+    } finally {
+      setBusy(false);
     }
-    onOpenChange(false);
   }
 
   if (!allowed) return null;
@@ -200,6 +212,7 @@ export function TaskFormDialog({
               <Input
                 id="task-deadline"
                 type="date"
+                min={mode === "edit" ? undefined : todayIso}
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
               />
@@ -257,11 +270,25 @@ export function TaskFormDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            disabled={busy}
+          >
             Cancel
           </Button>
-          <Button variant="gradient" disabled={!valid} onClick={submit}>
-            {mode === "create" ? "Create task" : "Save changes"}
+          <Button
+            variant="gradient"
+            disabled={!valid || busy}
+            onClick={submit}
+          >
+            {busy
+              ? mode === "create"
+                ? "Creating…"
+                : "Saving…"
+              : mode === "create"
+                ? "Create task"
+                : "Save changes"}
           </Button>
         </DialogFooter>
       </DialogContent>

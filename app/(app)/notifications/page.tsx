@@ -12,6 +12,7 @@ import { DeadlineScanControl } from "@/components/notifications/deadline-scan-co
 import { useStore } from "@/lib/store";
 import { useNotifications } from "@/lib/hooks";
 import { useRole } from "@/lib/role-context";
+import { canModerate } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import type { NotificationKind } from "@/lib/types";
 
@@ -29,11 +30,14 @@ const TABS: { value: Tab; label: string }[] = [
 ];
 
 export default function NotificationsPage() {
-  const { user } = useRole();
+  const { user, role } = useRole();
   const { markAllRead } = useStore();
   const { data: notificationsData } = useNotifications();
   const notifications = notificationsData ?? [];
   const [tab, setTab] = useState<Tab>("all");
+  // The deadline simulator fires team-wide notifications; only show it to
+  // leaders/admins so writers can't accidentally spam the inbox.
+  const showDeadlineScan = canModerate(role);
 
   const mine = useMemo(
     () =>
@@ -75,7 +79,7 @@ export default function NotificationsPage() {
         }
       />
 
-      <DeadlineScanControl />
+      {showDeadlineScan && <DeadlineScanControl />}
 
       <div className="flex flex-wrap gap-1.5">
         {TABS.map((t) => {

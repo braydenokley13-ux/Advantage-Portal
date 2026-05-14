@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ShieldAlert,
   Lock,
@@ -407,10 +407,12 @@ function ReportDetailDialog({
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // Reset note when the dialog opens for a different report.
-  useMemo(() => {
+  // Reset note when the dialog opens for a different report. `useMemo`
+  // was previously misused here as a side-effect channel; `useEffect` is
+  // the right tool (runs after commit, not during render).
+  useEffect(() => {
     setNote(report?.internalNote ?? "");
-  }, [report?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [report?.id, report?.internalNote]);
 
   if (!report) return null;
   const message = messages.find((m) => m.id === report.messageId);

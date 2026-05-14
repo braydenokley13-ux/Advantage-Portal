@@ -4,12 +4,10 @@ import {
   Hash,
   Megaphone,
   Pin,
-  Plus,
   Shield,
   Users as UsersIcon,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useStore } from "@/lib/store";
@@ -60,13 +58,10 @@ export function ConversationList({
   return (
     <div className="flex h-full flex-col border-r border-border bg-card/60">
       <div className="px-4 py-3 border-b border-border space-y-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold tracking-tight">Inbox</h2>
-          <Button size="icon" variant="ghost" disabled={!canCreateGroup}>
-            <Plus className="h-4 w-4" />
-            <span className="sr-only">New conversation</span>
-          </Button>
-        </div>
+        {/* "New conversation" button removed — the create flow isn't
+            wired yet (button had no onClick) and a permanently-dead
+            affordance is worse than no affordance. Track in roadmap. */}
+        <h2 className="text-sm font-semibold tracking-tight">Inbox</h2>
         <Input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
