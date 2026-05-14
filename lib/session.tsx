@@ -95,6 +95,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const signInAsDemoUser = useCallback(
     (userId: string) => {
+      // Demo-only escape hatch. Outside demo mode the only legitimate way
+      // to populate a session is the real auth flow (Supabase Auth, etc.),
+      // so we refuse impersonation here to prevent accidental shipping of
+      // the demo picker as a production sign-in path.
+      if (!isDemoMode()) return;
       const u = users.find((x) => x.id === userId);
       if (!u || u.active === false) return;
       setState({ userId, signedIn: true });
@@ -142,3 +147,18 @@ export const SESSION_DEFAULTS = {
   STORAGE_KEY,
   DEFAULT_DEMO_USER_ID,
 };
+
+/**
+ * Whether the build is running with the demo affordances on. Controls the
+ * `/login` user picker and the top-bar `RoleSwitcher`. Both surfaces let
+ * any visitor become any user, so they MUST be off in any deployment that
+ * exposes the portal to a real audience.
+ *
+ * Default is "on" so existing dev/demo workflows keep working; flip
+ * `NEXT_PUBLIC_DEMO_MODE=0` in production env to disable.
+ */
+export function isDemoMode(): boolean {
+  const v = process.env.NEXT_PUBLIC_DEMO_MODE;
+  if (typeof v !== "string" || v.length === 0) return true;
+  return v !== "0" && v.toLowerCase() !== "false";
+}

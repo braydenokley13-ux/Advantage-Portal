@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { ChevronDown, LogOut } from "lucide-react";
-import { useSession } from "@/lib/session";
+import { isDemoMode, useSession } from "@/lib/session";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -28,6 +28,7 @@ const ROLE_TONE: Record<Role, "default" | "secondary" | "warning" | "danger"> = 
 export function RoleSwitcher() {
   const router = useRouter();
   const { currentUser, allUsers, signInAsDemoUser, signOut } = useSession();
+  const demo = isDemoMode();
 
   if (!currentUser) return null;
 
@@ -47,29 +48,40 @@ export function RoleSwitcher() {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-72">
-        <DropdownMenuLabel>Switch demo user</DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          value={currentUser.id}
-          onValueChange={signInAsDemoUser}
-        >
-          {allUsers
-            .filter((u) => u.active !== false)
-            .map((u) => (
-              <DropdownMenuRadioItem key={u.id} value={u.id}>
-                <div className="flex w-full items-center justify-between gap-2">
-                  <div className="flex flex-col">
-                    <span>{u.name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {u.email}
-                    </span>
-                  </div>
-                  <Badge variant={ROLE_TONE[u.role]} className="capitalize">
-                    {u.role}
-                  </Badge>
-                </div>
-              </DropdownMenuRadioItem>
-            ))}
-        </DropdownMenuRadioGroup>
+        <DropdownMenuLabel className="flex flex-col gap-0.5">
+          <span>{currentUser.name}</span>
+          <span className="text-[11px] text-muted-foreground capitalize font-normal">
+            {currentUser.email} · {currentUser.role}
+          </span>
+        </DropdownMenuLabel>
+        {demo && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Switch demo user</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={currentUser.id}
+              onValueChange={signInAsDemoUser}
+            >
+              {allUsers
+                .filter((u) => u.active !== false)
+                .map((u) => (
+                  <DropdownMenuRadioItem key={u.id} value={u.id}>
+                    <div className="flex w-full items-center justify-between gap-2">
+                      <div className="flex flex-col">
+                        <span>{u.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {u.email}
+                        </span>
+                      </div>
+                      <Badge variant={ROLE_TONE[u.role]} className="capitalize">
+                        {u.role}
+                      </Badge>
+                    </div>
+                  </DropdownMenuRadioItem>
+                ))}
+            </DropdownMenuRadioGroup>
+          </>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => {
@@ -80,9 +92,11 @@ export function RoleSwitcher() {
           <LogOut className="h-4 w-4" />
           Sign out
         </DropdownMenuItem>
-        <DropdownMenuLabel className="text-[10px] font-normal">
-          Demo session — persisted in localStorage.
-        </DropdownMenuLabel>
+        {demo && (
+          <DropdownMenuLabel className="text-[10px] font-normal">
+            Demo session — persisted in localStorage.
+          </DropdownMenuLabel>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
