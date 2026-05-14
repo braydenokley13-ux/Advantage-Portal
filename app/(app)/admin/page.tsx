@@ -34,6 +34,22 @@ export default function AdminPage() {
   const { role } = useRole();
   const { users, tasks, notifications } = useStore();
 
+  // Hooks must run unconditionally — derive everything before any
+  // possible early-return.
+  const auditEvents = useMemo(
+    () =>
+      notifications
+        .slice(0, 8)
+        .map((n) => ({
+          id: n.id,
+          when: n.createdAt,
+          actor: users.find((u) => u.id === n.userId)?.name ?? "system",
+          action: n.title,
+          kind: n.kind,
+        })),
+    [notifications, users]
+  );
+
   if (!canManageUsers(role)) {
     return (
       <div className="container py-12 max-w-md">
@@ -57,22 +73,6 @@ export default function AdminPage() {
   const deactivated = users.length - active;
   const admins = users.filter((u) => u.role === "admin").length;
   const openTasks = tasks.filter((t) => t.status !== "complete").length;
-
-  // Synthesize a tiny audit-log feed from the in-memory event stream so
-  // the page demonstrates the shape of a real audit-log page.
-  const auditEvents = useMemo(
-    () =>
-      notifications
-        .slice(0, 8)
-        .map((n) => ({
-          id: n.id,
-          when: n.createdAt,
-          actor: users.find((u) => u.id === n.userId)?.name ?? "system",
-          action: n.title,
-          kind: n.kind,
-        })),
-    [notifications, users]
-  );
 
   return (
     <div className="container py-6 md:py-8 space-y-6">

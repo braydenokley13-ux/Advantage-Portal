@@ -120,6 +120,11 @@ export function TaskDrawer({
     else setTab("brief");
   }, [task, user]);
 
+  // Pull the checklist BEFORE any early-return so React's hook count
+  // stays stable across renders. The hook accepts nullable ids and just
+  // resolves to null when there's no task yet.
+  const { data: checklistData } = useEditorialChecklist(task?.id ?? null);
+
   if (!task) return null;
 
   const writer = users.find((u) => u.id === task.writerId);
@@ -138,9 +143,6 @@ export function TaskDrawer({
   const issue = task.issueId
     ? issues.find((i) => i.id === task.issueId)
     : undefined;
-  // Pull the checklist for this single task through the API hook so the
-  // stage derivation reflects toggles made in the drawer immediately.
-  const { data: checklistData } = useEditorialChecklist(task.id);
   const checklist = checklistData ?? undefined;
   const stageInfo = deriveStoryStage({ task, checklist: checklist ?? undefined, issue });
   const nextNewsroomAction = nextActionForRole(stageInfo.stage, user.role);
