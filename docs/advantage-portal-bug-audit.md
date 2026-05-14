@@ -322,21 +322,41 @@ and admin gating exist exclusively in client React.
 
 ## 7. Fixes applied in this audit
 
-This section is updated as commits land on `claude/security-code-audit-ox8ta`.
+All commits on `claude/security-code-audit-ox8ta`:
 
-- _populated after each micro-commit._
+| Audit refs | Commit | What changed |
+|---|---|---|
+| (audit) | `docs: bug + launch-readiness audit for the Advantage Portal` | Adds `docs/advantage-portal-bug-audit.md`. |
+| P0.1 | `security: upgrade next + eslint-config-next to 15.5.18` | Resolves the critical CVE chain on Next 15.1.0. Build still ✓. |
+| P0.2, P0.3 | `security: gate demo login + role switcher behind NEXT_PUBLIC_DEMO_MODE` | `isDemoMode()` helper added to `lib/session.tsx`; `/login` and `RoleSwitcher` hide the user picker when the flag is `0`; `signInAsDemoUser` refuses outside demo mode. |
+| P0.4 | `security: SupabaseAdapter enforces actor id == signed-in user` | New `assertSelf(method, actorId)` guard on every mutation that takes an actor id (`decidePitch`, `decideExtension`, `decideSensitiveFlag`, `convertPitch`, `raiseSensitiveFlag`, `requestExtension`, `createPitch`, `createModerationReport`, `updateModerationReport`, `bulkUpdateModerationReports`); reporter-supplied `severity` ignored; `updateUserRole` / `setUserActive` refuse self-edits. |
+| P0.5 | `db: migration 0004 — sync auth.users to public.users on signup` | New `0004_auth_user_sync.sql` with `handle_new_user()` trigger + email-update trigger + backfill of any orphan auth rows. README updated. |
+| P1.1, P1.5, P1.10, P1.11, P1.14, P2.4, P2.5 | `fix(pitches): My-Pitches issue lookup + busy/error states + active editors` | Resolves My-Pitches via task → issue rather than mismatching task id with issue id; filters inactive editors; PitchForm + PitchReviewCard now have busy + try/catch + inline error; deadline picker has `min=today`; defensive `canDecide` gate on the review buttons. |
+| P1.6 | `fix(ui): correctness batch …` (moderation slice) | `useMemo` mis-used as a side effect → `useEffect`. |
+| P1.2, P1.3, P1.4, P1.7, P1.8, P1.9 | `fix(ui): correctness batch — task card, task form, dead UI, moderation` | Task card uses live store users + real submission version (no more hardcoded v1); task form deadline rejects past dates and disables while busy; DeadlineScanControl gated to leader/admin; dead Search input and dead "New conversation" button removed. |
+| P1.10, P1.11 | `fix(forms): busy + error states across writer/editor form surfaces` | submission-form, review-panel, comments-panel, sensitive-panel, escalations card, announcements post, chat-view send all gain a busy gate + try/catch + inline error. Submission form also tells writers that file uploads aren't persisted yet. |
+| P1.16 + 2 real hooks bugs | `chore(lint): enable eslint + fix two real Rules-of-Hooks violations` | Adds `.eslintrc.json`. The new lint pass surfaced two genuine bugs — `useMemo` after early return in `admin/page.tsx`, `useEditorialChecklist` after early return in `task-drawer.tsx` — both fixed. The over-eager `react/no-unescaped-entities` rule is off (low signal); rules-of-hooks, exhaustive-deps (as warnings), and the rest stay on. |
 
 ## 8. Remaining risks for launch
 
-- Supabase Auth is not wired in. The demo session shim is the only auth.
+- Supabase Auth UI is not wired in. The demo session shim is still the
+  only sign-in path; flipping `NEXT_PUBLIC_DEMO_MODE=0` hides the picker
+  but leaves the door for the real auth UI to be implemented.
 - Adapter-level actor enforcement is a defence-in-depth measure; the
-  matching RLS `with check` clauses still need a migration.
+  matching RLS `with check (actor_id = auth.uid())` clauses still need
+  a follow-up migration so the database refuses too.
 - `notification_prefs` is not persisted server-side.
 - Real file uploads for submissions are unimplemented; today only metadata
-  is captured.
-- Search across tasks/people/messages is not implemented.
-- Conversation creation is not implemented (the button is dead in this
-  branch).
+  is captured. The submission form now warns writers about this.
+- Global search across tasks/people/messages is not implemented.
+- Conversation creation is not implemented (the button has been removed
+  in this branch).
+- Notification rows do not deep-link to their target resource yet; payload
+  doesn't carry the relevant ids (P2.10). Tracked as a follow-up.
+- A handful of `react-hooks/exhaustive-deps` warnings remain in
+  dashboard/calendar/issues/reviews/tasks/pitches/notifications/task-drawer.
+  All are the same pattern (`const xs = dataMaybe ?? []` then used as a
+  useMemo dep). They're warnings, not errors, but worth cleaning up later.
 
 ## 9. Manual testing steps before launch
 
