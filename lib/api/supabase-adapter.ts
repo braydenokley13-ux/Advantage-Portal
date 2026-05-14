@@ -481,6 +481,29 @@ export class SupabaseApiClient implements ApiClient {
     );
   }
 
+  /**
+   * Refuse a mutation that claims an actor id different from the signed-in
+   * user. RLS already enforces role membership, but only this check stops
+   * a leader from attributing a decision to a different leader, etc.
+   * Once we ship `with check (actor_id = auth.uid())` in RLS, this becomes
+   * defence-in-depth; until then it is the only guard.
+   */
+  private assertSelf(method: string, actorId: string | null | undefined): void {
+    if (!actorId) return;
+    if (!this.currentUserId) {
+      throw new ApiError(
+        `SupabaseApiClient.${method}: no signed-in user to act as`,
+        401
+      );
+    }
+    if (actorId !== this.currentUserId) {
+      throw new ApiError(
+        `SupabaseApiClient.${method}: actor id ${actorId} does not match the signed-in user`,
+        403
+      );
+    }
+  }
+
   // ── Identity / users ────────────────────────────────────────────────────
   async getCurrentUser(): Promise<UserZ | null> {
     if (!this.currentUserId) return null;
@@ -513,6 +536,15 @@ export class SupabaseApiClient implements ApiClient {
   }
 
   async updateUserRole(id: string, role: UserZ["role"]): Promise<UserZ> {
+    // Admins cannot demote themselves — the UI hides the control too, but
+    // this is the API-level guard so a crafted request can't lock the
+    // last admin out of the portal.
+    if (this.currentUserId && id === this.currentUserId) {
+      throw new ApiError(
+        "SupabaseApiClient.updateUserRole: admins cannot change their own role",
+        403
+      );
+    }
     const { data, error } = await this.sb
       .from("users")
       .update({ role })
@@ -524,6 +556,13 @@ export class SupabaseApiClient implements ApiClient {
   }
 
   async setUserActive(id: string, active: boolean): Promise<UserZ> {
+    // Admins cannot deactivate themselves — same reasoning as above.
+    if (this.currentUserId && id === this.currentUserId) {
+      throw new ApiError(
+        "SupabaseApiClient.setUserActive: admins cannot deactivate themselves",
+        403
+      );
+    }
     const { data, error } = await this.sb
       .from("users")
       .update({ active })
@@ -856,6 +895,7 @@ export class SupabaseApiClient implements ApiClient {
     newDeadline: string;
     reason: string;
   }): Promise<ExtensionRequest> {
+    this.assertSelf("requestExtension", input.requestedById);
     const { data, error } = await this.sb
       .from("extension_requests")
       .insert({
@@ -878,6 +918,7 @@ export class SupabaseApiClient implements ApiClient {
     decidedById: string;
     approve: boolean;
   }): Promise<void> {
+    this.assertSelf("decideExtension", input.decidedById);
     // Find the pending request for this task.
     const { data: pending, error: e1 } = await this.sb
       .from("extension_requests")
@@ -930,6 +971,7 @@ export class SupabaseApiClient implements ApiClient {
     reporterNote?: string;
     severity?: ModerationReportZ["severity"];
   }): Promise<ModerationReportZ> {
+    this.assertSelf("createModerationReport", input.reporterId);
     // Resolve reported_user_id and conversation_id from the message row.
     const { data: msg, error: mErr } = await this.sb
       .from("messages")
@@ -939,6 +981,9 @@ export class SupabaseApiClient implements ApiClient {
     if (mErr) this.err("createModerationReport(message)", mErr);
     const m = msg as { author_id: string; conversation_id: string };
 
+    // Severity is curated by moderators, not reporters: ignoring any
+    // client-supplied value so a reporter can't auto-escalate their own
+    // report to "high" priority. Triage happens in the moderation queue.
     const { data, error } = await this.sb
       .from("moderation_reports")
       .upsert(
@@ -949,7 +994,7 @@ export class SupabaseApiClient implements ApiClient {
           reporter_id: input.reporterId,
           reason: input.reason,
           reporter_note: input.reporterNote ?? null,
-          severity: input.severity ?? "medium",
+          severity: "medium",
           status: "open",
         },
         { onConflict: "message_id,reporter_id" }
@@ -971,6 +1016,7 @@ export class SupabaseApiClient implements ApiClient {
       resolvedById?: string;
     }
   ): Promise<ModerationReportZ> {
+    this.assertSelf("updateModerationReport", patch.resolvedById);
     const update: Record<string, unknown> = {};
     if (patch.status !== undefined) update.status = patch.status;
     if (patch.severity !== undefined) update.severity = patch.severity;
@@ -1005,6 +1051,7 @@ export class SupabaseApiClient implements ApiClient {
       resolvedById?: string;
     }
   ): Promise<ModerationReportZ[]> {
+    this.assertSelf("bulkUpdateModerationReports", patch.resolvedById);
     if (ids.length === 0) return [];
     const update: Record<string, unknown> = {};
     if (patch.status !== undefined) update.status = patch.status;
@@ -1083,6 +1130,7 @@ export class SupabaseApiClient implements ApiClient {
     writerNote?: string;
     writerId: string;
   }): Promise<PitchZ> {
+    this.assertSelf("createPitch", input.writerId);
     const { data, error } = await this.sb
       .from("pitches")
       .insert({
@@ -1109,6 +1157,7 @@ export class SupabaseApiClient implements ApiClient {
     accept: boolean;
     note?: string;
   }): Promise<PitchZ> {
+    this.assertSelf("decidePitch", input.decidedById);
     const { data, error } = await this.sb
       .from("pitches")
       .update({
@@ -1131,6 +1180,7 @@ export class SupabaseApiClient implements ApiClient {
     leaderId: string;
     issueId?: string;
   }): Promise<TaskZ> {
+    this.assertSelf("convertPitch", input.leaderId);
     // Load the pitch first so we can copy the brief / sources across.
     const { data: pdata, error: pErr } = await this.sb
       .from("pitches")
@@ -1468,6 +1518,7 @@ export class SupabaseApiClient implements ApiClient {
     reason: SensitiveFlagZ["reason"];
     notes: string;
   }): Promise<SensitiveFlagZ> {
+    this.assertSelf("raiseSensitiveFlag", input.raisedById);
     const { data, error } = await this.sb
       .from("sensitive_flags")
       .insert({
@@ -1529,6 +1580,7 @@ export class SupabaseApiClient implements ApiClient {
     status: "cleared" | "holding";
     note?: string;
   }): Promise<SensitiveFlagZ> {
+    this.assertSelf("decideSensitiveFlag", input.decidedById);
     // Pick the most recent active flag for the task.
     const { data: pending, error: e1 } = await this.sb
       .from("sensitive_flags")
