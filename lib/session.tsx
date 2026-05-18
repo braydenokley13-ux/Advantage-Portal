@@ -30,7 +30,7 @@ type SessionState = {
   signedIn: boolean;
 };
 
-type AuthResult = { error?: string };
+type AuthResult = { error?: string; needsConfirmation?: boolean };
 
 type SessionValue = {
   currentUser: User | null;
@@ -48,6 +48,8 @@ type SessionValue = {
   signInWithPassword: (email: string, password: string) => Promise<AuthResult>;
   /** Supabase-mode magic-link (email OTP) sign-in. */
   signInWithMagicLink: (email: string, next?: string) => Promise<AuthResult>;
+  /** Supabase-mode self-service sign-up (open registration). */
+  signUp: (name: string, email: string, password: string) => Promise<AuthResult>;
   signOut: () => void;
 };
 
@@ -221,6 +223,31 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const signUp = useCallback(
+    async (
+      name: string,
+      email: string,
+      password: string
+    ): Promise<AuthResult> => {
+      const sb = getSupabaseBrowserClient();
+      if (!sb) return { error: "Supabase is not configured." };
+      const appUrl =
+        process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+      const { data, error } = await sb.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { name },
+          emailRedirectTo: `${appUrl}/auth/callback`,
+        },
+      });
+      if (error) return { error: error.message };
+      // No session in the response means email confirmation is required.
+      return { needsConfirmation: !data.session };
+    },
+    []
+  );
+
   const signOut = useCallback(() => {
     if (mode === "supabase") {
       const sb = getSupabaseBrowserClient();
@@ -243,6 +270,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         signInAsDemoUser,
         signInWithPassword,
         signInWithMagicLink,
+        signUp,
         signOut,
       };
     }
@@ -260,6 +288,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       signInAsDemoUser,
       signInWithPassword,
       signInWithMagicLink,
+      signUp,
       signOut,
     };
   }, [
@@ -272,6 +301,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     signInAsDemoUser,
     signInWithPassword,
     signInWithMagicLink,
+    signUp,
     signOut,
   ]);
 
