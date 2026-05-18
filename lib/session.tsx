@@ -50,6 +50,11 @@ type SessionValue = {
   signInWithMagicLink: (email: string, next?: string) => Promise<AuthResult>;
   /** Supabase-mode self-service sign-up (open registration). */
   signUp: (name: string, email: string, password: string) => Promise<AuthResult>;
+  /** Supabase-mode: update the signed-in user's own display name + avatar. */
+  updateProfile: (patch: {
+    name?: string;
+    avatarUrl?: string;
+  }) => Promise<AuthResult>;
   signOut: () => void;
 };
 
@@ -248,6 +253,34 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const updateProfile = useCallback(
+    async (patch: {
+      name?: string;
+      avatarUrl?: string;
+    }): Promise<AuthResult> => {
+      const sb = getSupabaseBrowserClient();
+      if (!sb) return { error: "Supabase is not configured." };
+      const { error } = await sb.rpc("update_my_profile", {
+        p_name: patch.name ?? "",
+        p_avatar_url: patch.avatarUrl ?? "",
+      });
+      if (error) return { error: error.message };
+      setSupaUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              name: patch.name?.trim() ? patch.name.trim() : prev.name,
+              avatarUrl: patch.avatarUrl?.trim()
+                ? patch.avatarUrl.trim()
+                : undefined,
+            }
+          : prev
+      );
+      return {};
+    },
+    []
+  );
+
   const signOut = useCallback(() => {
     if (mode === "supabase") {
       const sb = getSupabaseBrowserClient();
@@ -271,6 +304,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         signInWithPassword,
         signInWithMagicLink,
         signUp,
+        updateProfile,
         signOut,
       };
     }
@@ -289,6 +323,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       signInWithPassword,
       signInWithMagicLink,
       signUp,
+      updateProfile,
       signOut,
     };
   }, [
@@ -302,6 +337,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     signInWithPassword,
     signInWithMagicLink,
     signUp,
+    updateProfile,
     signOut,
   ]);
 
