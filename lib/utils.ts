@@ -56,3 +56,13 @@ export function googleDocId(url: string): string | null {
   const m = url.match(/\/document\/d\/([^/]+)/);
   return m ? m[1] : null;
 }
+
+/**
+ * Embeddable preview URL for a Google Doc link, or null when the URL isn't a
+ * recognisable Doc. The `/preview` endpoint renders read-only in an iframe
+ * for any doc the viewer is allowed to open.
+ */
+export function googleDocPreviewUrl(url: string): string | null {
+  const id = googleDocId(url);
+  return id ? `https://docs.google.com/document/d/${id}/preview` : null;
+}

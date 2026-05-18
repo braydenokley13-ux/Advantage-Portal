@@ -3,17 +3,10 @@
  * project. Field naming bridges the snake_case Postgres columns and the
  * camelCase application contracts.
  *
- * Implementation status:
- *   1. tasks                       — fully implemented
- *   2. extension_requests          — fully implemented
- *   3. messages / convos           — read + send + pin + hide
- *   4. moderation_reports          — list / create / update / bulk
- *   5. notifications               — list / mark / push
- *   6. submissions / reviews / comments — fully implemented (list + create,
- *      including task-status roll-forward to match the mock store)
- *
- *   `createConversation` remains unimplemented — conversation creation is an
- *   admin/server concern and is out of scope for the client adapter.
+ * Every method of the `ApiClient` interface is implemented: tasks,
+ * extension requests, messages / conversations, moderation reports,
+ * notifications, submissions / reviews / comments, and the newsroom
+ * entities (sections, pitches, issues, slots, checklists, sensitive flags).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ApiError, type ApiClient } from "./client";
@@ -483,13 +476,6 @@ export class SupabaseApiClient implements ApiClient {
     );
   }
 
-  private notSupported(method: string): never {
-    throw new ApiError(
-      `SupabaseApiClient.${method} not implemented yet — switch NEXT_PUBLIC_DATA_MODE to "mock" or finish the migration.`,
-      501
-    );
-  }
-
   // ── Identity / users ────────────────────────────────────────────────────
   async getCurrentUser(): Promise<UserZ | null> {
     if (!this.currentUserId) return null;
@@ -628,6 +614,8 @@ export class SupabaseApiClient implements ApiClient {
     editorId?: string;
     deadline: string;
     color?: TaskZ["color"];
+    wordCountTarget?: number;
+    citationsRequired?: boolean;
   }): Promise<TaskZ> {
     const { data, error } = await this.sb
       .from("tasks")
@@ -638,6 +626,8 @@ export class SupabaseApiClient implements ApiClient {
         editor_id: input.editorId ?? null,
         deadline: input.deadline,
         color: input.color ?? "green",
+        word_count_target: input.wordCountTarget ?? null,
+        citations_required: input.citationsRequired ?? false,
       })
       .select(TASK_COLUMNS)
       .single();
@@ -654,6 +644,14 @@ export class SupabaseApiClient implements ApiClient {
       editorId?: string;
       deadline?: string;
       color?: TaskZ["color"];
+      wordCountTarget?: number;
+      citationsRequired?: boolean;
+      sectionId?: string;
+      issueId?: string;
+      copyEditorId?: string;
+      factCheckerId?: string;
+      slug?: string;
+      brief?: AssignmentBriefZ;
     }
   ): Promise<TaskZ> {
     const update: Record<string, unknown> = {};
@@ -663,6 +661,18 @@ export class SupabaseApiClient implements ApiClient {
     if (patch.editorId !== undefined) update.editor_id = patch.editorId;
     if (patch.deadline !== undefined) update.deadline = patch.deadline;
     if (patch.color !== undefined) update.color = patch.color;
+    if (patch.wordCountTarget !== undefined)
+      update.word_count_target = patch.wordCountTarget;
+    if (patch.citationsRequired !== undefined)
+      update.citations_required = patch.citationsRequired;
+    if (patch.sectionId !== undefined) update.section_id = patch.sectionId;
+    if (patch.issueId !== undefined) update.issue_id = patch.issueId;
+    if (patch.copyEditorId !== undefined)
+      update.copy_editor_id = patch.copyEditorId;
+    if (patch.factCheckerId !== undefined)
+      update.fact_checker_id = patch.factCheckerId;
+    if (patch.slug !== undefined) update.slug = patch.slug;
+    if (patch.brief !== undefined) update.assignment_brief = patch.brief;
 
     const { data, error } = await this.sb
       .from("tasks")
@@ -870,7 +880,36 @@ export class SupabaseApiClient implements ApiClient {
       memberIds: r.conversation_members.map((m) => m.user_id),
     }));
   }
-  createConversation() { return this.notSupported("createConversation"); }
+  async createConversation(input: {
+    kind: ConversationZ["kind"];
+    title: string;
+    memberIds: string[];
+  }): Promise<ConversationZ> {
+    const { data, error } = await this.sb
+      .from("conversations")
+      .insert({ kind: input.kind, title: input.title })
+      .select("id, kind, title, last_message_at")
+      .single();
+    if (error) this.err("createConversation", error);
+    const row = data as ConversationRow;
+
+    const members = input.memberIds.map((user_id) => ({
+      conversation_id: row.id,
+      user_id,
+    }));
+    const { error: mErr } = await this.sb
+      .from("conversation_members")
+      .insert(members);
+    if (mErr) this.err("createConversation(members)", mErr);
+
+    return {
+      id: row.id,
+      kind: row.kind,
+      title: row.title,
+      lastMessageAt: row.last_message_at ?? undefined,
+      memberIds: input.memberIds,
+    };
+  }
 
   async listMessages(conversationId?: string): Promise<MessageZ[]> {
     let q = this.sb
