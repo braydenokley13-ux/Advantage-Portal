@@ -2,9 +2,9 @@
 
 /**
  * MockAdapter — bridges the typed `ApiClient` interface to the in-memory
- * `StoreProvider`. This lets the new hooks layer call API methods while the
- * UI continues to render from the existing store. When the HTTP backend
- * comes online, the adapter swaps and the rest of the codebase stays put.
+ * `StoreProvider`. This lets the hooks layer call API methods while the
+ * UI renders from the store. The store's mutations are async (they share a
+ * contract with the Supabase-backed store), so every call here awaits.
  */
 import { useMemo } from "react";
 import { ApiError, type ApiClient } from "./client";
@@ -83,13 +83,13 @@ export function useMockApiClient(currentUserId: string | null): ApiClient {
         return u ? asUser(u) : null;
       },
       async updateUserRole(id, role) {
-        store.updateUserRole(id, role);
+        await store.updateUserRole(id, role);
         const u = store.users.find((x) => x.id === id);
         if (!u) throw new Error(`User ${id} not found`);
         return asUser({ ...u, role });
       },
       async setUserActive(id, active) {
-        store.setUserActive(id, active);
+        await store.setUserActive(id, active);
         const u = store.users.find((x) => x.id === id);
         if (!u) throw new Error(`User ${id} not found`);
         return asUser({ ...u, active });
@@ -104,17 +104,17 @@ export function useMockApiClient(currentUserId: string | null): ApiClient {
         return t ? asTask(t) : null;
       },
       async createTask(input) {
-        const t = store.createTask(input);
+        const t = await store.createTask(input);
         return asTask(t);
       },
       async updateTask(id, patch) {
-        store.updateTask(id, patch);
+        await store.updateTask(id, patch);
         const t = store.tasks.find((x) => x.id === id);
         if (!t) throw new Error(`Task ${id} not found`);
         return asTask({ ...t, ...patch });
       },
       async setTaskStatus(id, status) {
-        store.setTaskStatus(id, status);
+        await store.setTaskStatus(id, status);
         const t = store.tasks.find((x) => x.id === id);
         if (!t) throw new Error(`Task ${id} not found`);
         return asTask({ ...t, status });
@@ -126,7 +126,7 @@ export function useMockApiClient(currentUserId: string | null): ApiClient {
         return taskId ? all.filter((s) => s.taskId === taskId) : all;
       },
       async createSubmission(input) {
-        return asSubmission(store.createSubmission(input));
+        return asSubmission(await store.createSubmission(input));
       },
 
       // ── Reviews ──────────────────────────────────────────────────────────
@@ -137,7 +137,7 @@ export function useMockApiClient(currentUserId: string | null): ApiClient {
           : all;
       },
       async createReview(input) {
-        return asReview(store.submitReview(input));
+        return asReview(await store.submitReview(input));
       },
 
       // ── Comments ─────────────────────────────────────────────────────────
@@ -148,10 +148,10 @@ export function useMockApiClient(currentUserId: string | null): ApiClient {
           : all;
       },
       async createComment(input) {
-        return asComment(store.addComment(input));
+        return asComment(await store.addComment(input));
       },
       async toggleResolveComment(id) {
-        store.toggleResolveComment(id);
+        await store.toggleResolveComment(id);
         const c = store.comments.find((x) => x.id === id);
         if (!c) throw new Error(`Comment ${id} not found`);
         return asComment({ ...c, resolved: !c.resolved });
@@ -162,7 +162,7 @@ export function useMockApiClient(currentUserId: string | null): ApiClient {
         return store.conversations.map(asConversation);
       },
       async createConversation(input) {
-        return asConversation(store.createConversation(input));
+        return asConversation(await store.createConversation(input));
       },
       async listMessages(conversationId) {
         const all = store.messages.map(asMessage);
@@ -171,10 +171,10 @@ export function useMockApiClient(currentUserId: string | null): ApiClient {
           : all;
       },
       async sendMessage(input) {
-        return asMessage(store.sendMessage(input));
+        return asMessage(await store.sendMessage(input));
       },
       async togglePinMessage(id) {
-        store.togglePinMessage(id);
+        await store.togglePinMessage(id);
         const m = store.messages.find((x) => x.id === id);
         if (!m) throw new Error(`Message ${id} not found`);
         return asMessage(m);
@@ -186,18 +186,18 @@ export function useMockApiClient(currentUserId: string | null): ApiClient {
         return userId ? all.filter((n) => n.userId === userId) : all;
       },
       async pushNotification(input) {
-        store.pushNotification(input);
+        await store.pushNotification(input);
         const all = store.notifications;
         return asNotification(all[0]);
       },
       async markNotificationRead(id, read = true) {
-        store.markNotificationRead(id, read);
+        await store.markNotificationRead(id, read);
         const n = store.notifications.find((x) => x.id === id);
         if (!n) throw new Error(`Notification ${id} not found`);
         return asNotification({ ...n, read });
       },
       async markAllNotificationsRead(userId) {
-        store.markAllRead(userId);
+        await store.markAllRead(userId);
       },
 
       // ── Extension requests ──────────────────────────────────────────────
@@ -205,7 +205,7 @@ export function useMockApiClient(currentUserId: string | null): ApiClient {
         return store.requestExtension(input);
       },
       async decideExtension(input) {
-        store.decideExtension(input);
+        await store.decideExtension(input);
       },
 
       // ── Moderation reports ──────────────────────────────────────────────
@@ -216,7 +216,7 @@ export function useMockApiClient(currentUserId: string | null): ApiClient {
           : all;
       },
       async createModerationReport(input) {
-        const r = store.createModerationReport({
+        const r = await store.createModerationReport({
           messageId: input.messageId,
           reporterId: input.reporterId,
           reason: input.reason,
@@ -229,19 +229,19 @@ export function useMockApiClient(currentUserId: string | null): ApiClient {
         return asReport(r);
       },
       async updateModerationReport(id, patch) {
-        store.updateModerationReport(id, patch);
+        await store.updateModerationReport(id, patch);
         const r = store.moderationReports.find((x) => x.id === id);
         if (!r) throw new Error(`Report ${id} not found`);
         return asReport(r);
       },
       async bulkUpdateModerationReports(ids, patch) {
-        for (const id of ids) store.updateModerationReport(id, patch);
+        for (const id of ids) await store.updateModerationReport(id, patch);
         return store.moderationReports
           .filter((r) => ids.includes(r.id))
           .map(asReport);
       },
       async hideMessage(messageId) {
-        store.hideMessage(messageId);
+        await store.hideMessage(messageId);
         const m = store.messages.find((x) => x.id === messageId);
         if (!m) throw new Error(`Message ${messageId} not found`);
         return m as MessageZ;
@@ -262,14 +262,14 @@ export function useMockApiClient(currentUserId: string | null): ApiClient {
         return rows.map(asPitch);
       },
       async createPitch(input) {
-        const p = store.createPitch({
+        const p = await store.createPitch({
           ...input,
           proposedSources: input.proposedSources ?? [],
         });
         return asPitch(p);
       },
       async decidePitch(input) {
-        const p = store.decidePitch({
+        const p = await store.decidePitch({
           pitchId: input.pitchId,
           decidedById: input.decidedById,
           accept: input.accept,
@@ -279,7 +279,7 @@ export function useMockApiClient(currentUserId: string | null): ApiClient {
         return asPitch(p);
       },
       async convertPitch(input) {
-        const t = store.convertPitch({
+        const t = await store.convertPitch({
           pitchId: input.pitchId,
           editorId: input.editorId,
           deadline: input.deadline,
@@ -306,7 +306,7 @@ export function useMockApiClient(currentUserId: string | null): ApiClient {
         // The mock store's `setIssueStatus` is the only mutator we have for
         // issues today. For richer patches, we go in via setIssueStatus when
         // status changes are present and otherwise no-op (mock fidelity).
-        if (patch.status) store.setIssueStatus(id, patch.status);
+        if (patch.status) await store.setIssueStatus(id, patch.status);
         const i = store.issues.find((x) => x.id === id);
         if (!i) throw new ApiError(`Issue ${id} not found`, 404);
         // Apply name/notes/publishDate locally for the return value so the
@@ -315,7 +315,7 @@ export function useMockApiClient(currentUserId: string | null): ApiClient {
         return asIssue({ ...i, ...patch });
       },
       async publishIssue(id) {
-        store.setIssueStatus(id, "published");
+        await store.setIssueStatus(id, "published");
         const i = store.issues.find((x) => x.id === id);
         if (!i) throw new ApiError(`Issue ${id} not found`, 404);
         return asIssue(i);
@@ -333,12 +333,9 @@ export function useMockApiClient(currentUserId: string | null): ApiClient {
         if (existing) {
           // Mock store has no in-place priority update; remove + re-add
           // keeps mock fidelity without leaking a new mutator API.
-          if (
-            input.priority &&
-            input.priority !== existing.priority
-          ) {
-            store.removeIssueSlot(existing.id);
-            const slot = store.addIssueSlot({
+          if (input.priority && input.priority !== existing.priority) {
+            await store.removeIssueSlot(existing.id);
+            const slot = await store.addIssueSlot({
               issueId: input.issueId,
               taskId: input.taskId,
               priority: input.priority,
@@ -347,11 +344,11 @@ export function useMockApiClient(currentUserId: string | null): ApiClient {
           }
           return asIssueSlot(existing);
         }
-        const slot = store.addIssueSlot(input);
+        const slot = await store.addIssueSlot(input);
         return asIssueSlot(slot);
       },
       async removeIssueSlot(id) {
-        store.removeIssueSlot(id);
+        await store.removeIssueSlot(id);
       },
 
       // ── Newsroom: editorial checklists ──────────────────────────────────
@@ -366,9 +363,10 @@ export function useMockApiClient(currentUserId: string | null): ApiClient {
         return all.filter((c) => set.has(c.taskId));
       },
       async updateChecklistItem(input) {
-        store.toggleChecklistItem(input);
+        await store.toggleChecklistItem(input);
         const cl = store.checklists.find((c) => c.taskId === input.taskId);
-        if (!cl) throw new ApiError(`Checklist for ${input.taskId} not found`, 500);
+        if (!cl)
+          throw new ApiError(`Checklist for ${input.taskId} not found`, 500);
         return asChecklist(cl);
       },
 
@@ -386,11 +384,11 @@ export function useMockApiClient(currentUserId: string | null): ApiClient {
         return flags.map(asFlag);
       },
       async raiseSensitiveFlag(input) {
-        const f = store.raiseSensitiveFlag(input);
+        const f = await store.raiseSensitiveFlag(input);
         return asFlag(f);
       },
       async decideSensitiveFlag(input) {
-        store.decideSensitiveFlag(input);
+        await store.decideSensitiveFlag(input);
         const t = store.tasks.find((x) => x.id === input.taskId);
         if (!t?.sensitive)
           throw new ApiError(`No sensitive flag on task ${input.taskId}`, 404);

@@ -44,15 +44,15 @@ export default function AnnouncementsPage() {
   const pinned = thread.filter((m) => m.pinnedAt);
   const feed = thread.filter((m) => !m.pinnedAt);
 
-  function post() {
+  async function post() {
     if (!draft.trim() || !allTeam || !allowPost) return;
-    const m = sendMessage({
+    const m = await sendMessage({
       conversationId: allTeam.id,
       authorId: user.id,
       body: draft.trim(),
     });
     if (pinNew && allowPin) {
-      togglePinMessage(m.id);
+      await togglePinMessage(m.id);
     }
     for (const memberId of allTeam.memberIds) {
       if (memberId === user.id) continue;

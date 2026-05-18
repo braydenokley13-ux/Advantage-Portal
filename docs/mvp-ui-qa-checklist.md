@@ -53,10 +53,9 @@ States: `not_started` → `in_progress` → `submitted` → `complete`.
 - [ ] Resolved inline comments collapse on the line.
 - [ ] General comments still post via the Comments tab.
 - [ ] File submissions show filename, kind badge, size, and upload time.
-- [ ] File preview placeholders render per kind (PDF / DOCX / image / text / other).
-- [ ] Google Doc card shows the URL, an embed placeholder, and the
-      private-doc warning.
-- [ ] "Download" / "Open" actions on file cards alert that they are mocked.
+- [ ] File cards show a "metadata only" note (file bytes are not stored).
+- [ ] Google Doc card renders a live `/preview` iframe for a valid Doc URL,
+      a "link not recognised" fallback otherwise, plus the private-doc warning.
 - [ ] Reviewer can approve / request changes / reject with optional notes.
 - [ ] Writers cannot review their own submissions.
 - [ ] Editors who are not the assigned editor cannot review.
@@ -134,22 +133,26 @@ States: `not_started` → `in_progress` → `submitted` → `complete`.
 
 ---
 
-## Known mock-only limitations
+## Data modes & remaining limitations
 
-These are intentional gaps in the MVP frontend; they are NOT bugs.
+The portal runs in two data modes (see `lib/supabase/env.ts`):
 
-- **No backend.** Everything is in-memory `StoreProvider` state. Refreshing
-  the page resets all changes.
-- **No real auth.** Role switcher in the topbar is the only "login".
-- **Mock submissions.** File uploads never leave the browser; downloads /
-  opens are alerted as mocked.
-- **Google Doc previews are placeholders.** No iframe is rendered and no
-  external fetches are performed.
+- **Supabase mode** (`NEXT_PUBLIC_DATA_MODE=supabase`) — the store hydrates
+  from and writes through `SupabaseApiClient`; data persists in Postgres and
+  re-fetches on navigation. Real Supabase Auth gates every read via RLS.
+- **Mock mode** (default / credential fallback) — in-memory `StoreProvider`
+  seeded from `lib/mock-data.ts`; refreshing the page resets all changes, and
+  the topbar role switcher / demo-user picker stand in for real login.
+
+Remaining intentional gaps (NOT bugs):
+
+- **File submissions store metadata only.** Filename / type / size are
+  recorded; the file bytes are not uploaded or retained.
 - **Deadline scan is manual.** A real scheduler would run server-side; the
   demo control on the Notifications page exposes the pure scanner instead.
-- **No realtime.** Messages/comments/notifications appear instantly because
-  every client is the same in-memory store, but multi-tab will not sync.
-- **Search / mentions / attachments in messages** are not implemented.
+- **No realtime.** Cross-client updates surface on navigation (re-fetch),
+  not via live subscriptions.
+- **Mentions / attachments in messages** are not implemented.
 - **Calendar reminders inside the Calendar surface** (vs. notification bell)
   are out of scope for MVP.
 - **Inline markdown rendering** is plain-text + line numbers — there is no

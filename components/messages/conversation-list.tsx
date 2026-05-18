@@ -11,7 +11,16 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useStore } from "@/lib/store";
 import { useRole } from "@/lib/role-context";
 import {
@@ -20,8 +29,8 @@ import {
 } from "@/lib/permissions";
 import { initials, cn } from "@/lib/utils";
 import { formatDistanceToNowStrict } from "date-fns";
-import { useState } from "react";
-import type { Conversation, ConversationKind } from "@/lib/types";
+import { useMemo, useState } from "react";
+import type { Conversation, ConversationKind, User } from "@/lib/types";
 
 const KIND_ICON: Partial<
   Record<ConversationKind, React.ComponentType<{ className?: string }>>
@@ -40,8 +49,9 @@ export function ConversationList({
   onSelect: (id: string) => void;
 }) {
   const { user, role } = useRole();
-  const { conversations, messages, users } = useStore();
+  const { conversations, messages, users, createConversation } = useStore();
   const [filter, setFilter] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
 
   const visible = visibleConversations({ conversations, user });
   const sorted = [...visible].sort(
@@ -62,9 +72,14 @@ export function ConversationList({
       <div className="px-4 py-3 border-b border-border space-y-2">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold tracking-tight">Inbox</h2>
-          <Button size="icon" variant="ghost" disabled={!canCreateGroup}>
+          <Button
+            size="icon"
+            variant="ghost"
+            disabled={!canCreateGroup}
+            onClick={() => setCreateOpen(true)}
+            aria-label="New conversation"
+          >
             <Plus className="h-4 w-4" />
-            <span className="sr-only">New conversation</span>
           </Button>
         </div>
         <Input
@@ -135,7 +150,199 @@ export function ConversationList({
           Only leaders &amp; admins can create groups or issue channels.
         </div>
       )}
+
+      <NewConversationDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        users={users}
+        currentUser={user}
+        canCreateGroup={canCreateConversation(role, "group")}
+        canCreateIssue={canCreateConversation(role, "issue")}
+        onCreate={async (input) => {
+          const conv = await createConversation(input);
+          onSelect(conv.id);
+        }}
+      />
     </div>
+  );
+}
+
+function NewConversationDialog({
+  open,
+  onOpenChange,
+  users,
+  currentUser,
+  canCreateGroup,
+  canCreateIssue,
+  onCreate,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  users: User[];
+  currentUser: User;
+  canCreateGroup: boolean;
+  canCreateIssue: boolean;
+  onCreate: (input: {
+    kind: ConversationKind;
+    title: string;
+    memberIds: string[];
+  }) => Promise<void>;
+}) {
+  const kinds = useMemo<ConversationKind[]>(
+    () =>
+      ([
+        canCreateGroup ? "group" : null,
+        canCreateIssue ? "issue" : null,
+      ].filter(Boolean) as ConversationKind[]),
+    [canCreateGroup, canCreateIssue]
+  );
+  const [kind, setKind] = useState<ConversationKind>(kinds[0] ?? "group");
+  const [title, setTitle] = useState("");
+  const [memberIds, setMemberIds] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+
+  const selectable = users.filter(
+    (u) => u.id !== currentUser.id && u.active !== false
+  );
+  const canSubmit = title.trim().length > 0 && !submitting;
+
+  function reset() {
+    setKind(kinds[0] ?? "group");
+    setTitle("");
+    setMemberIds([]);
+    setSubmitting(false);
+  }
+
+  async function submit() {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    try {
+      await onCreate({
+        kind,
+        title: title.trim(),
+        // The creator is always a member.
+        memberIds: [currentUser.id, ...memberIds],
+      });
+      onOpenChange(false);
+      reset();
+    } catch {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        onOpenChange(next);
+        if (!next) reset();
+      }}
+    >
+      <DialogContent className="max-h-[88vh]">
+        <DialogHeader>
+          <DialogTitle>New conversation</DialogTitle>
+          <DialogDescription>
+            Start a group or issue channel. You’re added automatically.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 px-5 py-4 overflow-y-auto scroll-thin">
+          {kinds.length > 1 && (
+            <div className="space-y-1.5">
+              <Label>Channel type</Label>
+              <div className="flex gap-2">
+                {kinds.map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setKind(k)}
+                    className={cn(
+                      "rounded-md border px-3 py-1.5 text-sm capitalize transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      kind === k
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-border text-muted-foreground hover:bg-accent"
+                    )}
+                  >
+                    {k}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label htmlFor="conversation-title">Title</Label>
+            <Input
+              id="conversation-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Spring issue planning"
+              autoFocus
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Members</Label>
+            <div className="max-h-56 overflow-y-auto scroll-thin rounded-md border border-border divide-y divide-border">
+              {selectable.map((u) => {
+                const checked = memberIds.includes(u.id);
+                return (
+                  <label
+                    key={u.id}
+                    className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-accent"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) =>
+                        setMemberIds((prev) =>
+                          e.target.checked
+                            ? [...prev, u.id]
+                            : prev.filter((id) => id !== u.id)
+                        )
+                      }
+                      className="h-4 w-4 accent-primary"
+                    />
+                    <Avatar className="h-7 w-7">
+                      <AvatarFallback>{initials(u.name)}</AvatarFallback>
+                    </Avatar>
+                    <span className="min-w-0 flex-1 truncate text-sm">
+                      {u.name}
+                    </span>
+                    <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      {u.role}
+                    </span>
+                  </label>
+                );
+              })}
+              {selectable.length === 0 && (
+                <p className="px-3 py-4 text-center text-xs text-muted-foreground">
+                  No other members available.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="gradient"
+            size="sm"
+            disabled={!canSubmit}
+            onClick={submit}
+          >
+            {submitting ? "Creating…" : "Create conversation"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
