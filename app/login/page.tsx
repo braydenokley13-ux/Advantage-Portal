@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MockModeBanner } from "@/components/shell/mock-mode-banner";
 import { useDemoUsers, useSession } from "@/lib/session";
 import { cn, initials } from "@/lib/utils";
 import type { Role } from "@/lib/types";
@@ -43,6 +44,7 @@ function LoginInner() {
 
   return (
     <LoginShell>
+      <MockModeBanner />
       {session.mode === "supabase" ? (
         <SupabaseLogin next={next} />
       ) : (
@@ -64,6 +66,13 @@ function DemoLogin({ next }: { next: string }) {
 
   return (
     <>
+      <div className="text-center">
+        <p className="text-sm font-medium">Choose a demo account</p>
+        <p className="text-xs text-muted-foreground">
+          Each account drops you into a different role so you can explore the
+          portal from that perspective.
+        </p>
+      </div>
       <Card>
         <CardContent className="p-3">
           <ul className="divide-y divide-border">
@@ -94,8 +103,8 @@ function DemoLogin({ next }: { next: string }) {
         </CardContent>
       </Card>
       <p className="text-center text-[11px] text-muted-foreground">
-        Sessions persist via <code>localStorage</code>. Sign out from the
-        avatar menu in the top bar.
+        Demo sessions live in <code>localStorage</code> only — nothing is
+        saved to a server. Sign out from the avatar menu in the top bar.
       </p>
     </>
   );
