@@ -345,7 +345,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         iss,
         slot,
         chk,
-        flags,
       ] = await Promise.all([
         api.listUsers(),
         api.listTasks(),
@@ -361,19 +360,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         api.listIssues(),
         api.listIssueSlots(),
         api.listChecklists(),
-        api.listSensitiveFlags(),
       ]);
-      // The store keeps the sensitive flag nested on each task; the adapter
-      // returns it as a flat list, so re-attach it here.
-      const flagByTask = new Map(flags.map((f) => [f.taskId, f as SensitiveFlag]));
+      // `listTasks()` already attaches each task's latest sensitive flag,
+      // so no separate flag merge is needed here.
       setUsersState(u as User[]);
-      setTasks(
-        (t as Task[]).map((task) =>
-          flagByTask.has(task.id)
-            ? { ...task, sensitive: flagByTask.get(task.id) }
-            : task
-        )
-      );
+      setTasks(t as Task[]);
       setSubmissions(subs as Submission[]);
       setReviews(rev as Review[]);
       setComments(com as Comment[]);
@@ -1435,7 +1426,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           await persist(api.markAllNotificationsRead(userId));
         },
         pushNotification: async (input) => {
-          await persist(api.pushNotification(input));
+          // Notification fan-out to other users requires a server-side
+          // (service-role) path — the `notifications` RLS policy only lets a
+          // client insert a row for itself or when acting as an admin. Treat
+          // this as best-effort so a rejected fan-out can't break the user's
+          // action; production delivery is a server-side trigger's job.
+          try {
+            await api.pushNotification(input);
+            await refresh();
+          } catch {
+            /* RLS-rejected fan-out — delivered server-side in production */
+          }
         },
         requestExtension: (input) => persist(api.requestExtension(input)),
         decideExtension: async (input) => {
