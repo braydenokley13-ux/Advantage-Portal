@@ -30,7 +30,7 @@ type SessionState = {
   signedIn: boolean;
 };
 
-type AuthResult = { error?: string };
+type AuthResult = { error?: string; needsConfirmation?: boolean };
 
 type SessionValue = {
   currentUser: User | null;
@@ -48,6 +48,13 @@ type SessionValue = {
   signInWithPassword: (email: string, password: string) => Promise<AuthResult>;
   /** Supabase-mode magic-link (email OTP) sign-in. */
   signInWithMagicLink: (email: string, next?: string) => Promise<AuthResult>;
+  /** Supabase-mode self-service sign-up (open registration). */
+  signUp: (name: string, email: string, password: string) => Promise<AuthResult>;
+  /** Supabase-mode: update the signed-in user's own display name + avatar. */
+  updateProfile: (patch: {
+    name?: string;
+    avatarUrl?: string;
+  }) => Promise<AuthResult>;
   signOut: () => void;
 };
 
@@ -221,6 +228,59 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const signUp = useCallback(
+    async (
+      name: string,
+      email: string,
+      password: string
+    ): Promise<AuthResult> => {
+      const sb = getSupabaseBrowserClient();
+      if (!sb) return { error: "Supabase is not configured." };
+      const appUrl =
+        process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+      const { data, error } = await sb.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { name },
+          emailRedirectTo: `${appUrl}/auth/callback`,
+        },
+      });
+      if (error) return { error: error.message };
+      // No session in the response means email confirmation is required.
+      return { needsConfirmation: !data.session };
+    },
+    []
+  );
+
+  const updateProfile = useCallback(
+    async (patch: {
+      name?: string;
+      avatarUrl?: string;
+    }): Promise<AuthResult> => {
+      const sb = getSupabaseBrowserClient();
+      if (!sb) return { error: "Supabase is not configured." };
+      const { error } = await sb.rpc("update_my_profile", {
+        p_name: patch.name ?? "",
+        p_avatar_url: patch.avatarUrl ?? "",
+      });
+      if (error) return { error: error.message };
+      setSupaUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              name: patch.name?.trim() ? patch.name.trim() : prev.name,
+              avatarUrl: patch.avatarUrl?.trim()
+                ? patch.avatarUrl.trim()
+                : undefined,
+            }
+          : prev
+      );
+      return {};
+    },
+    []
+  );
+
   const signOut = useCallback(() => {
     if (mode === "supabase") {
       const sb = getSupabaseBrowserClient();
@@ -243,6 +303,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         signInAsDemoUser,
         signInWithPassword,
         signInWithMagicLink,
+        signUp,
+        updateProfile,
         signOut,
       };
     }
@@ -260,6 +322,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       signInAsDemoUser,
       signInWithPassword,
       signInWithMagicLink,
+      signUp,
+      updateProfile,
       signOut,
     };
   }, [
@@ -272,6 +336,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     signInAsDemoUser,
     signInWithPassword,
     signInWithMagicLink,
+    signUp,
+    updateProfile,
     signOut,
   ]);
 

@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useDemoUsers, useSession } from "@/lib/session";
-import { initials } from "@/lib/utils";
+import { cn, initials } from "@/lib/utils";
 import type { Role } from "@/lib/types";
 
 const ROLE_TONE: Record<Role, "default" | "secondary" | "warning" | "danger"> = {
@@ -105,22 +105,40 @@ function SupabaseLogin({ next }: { next: string }) {
   const search = useSearchParams();
   const session = useSession();
 
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(
     search.get("error") ? "Sign-in link was invalid or expired. Try again." : null
   );
-  const [magicSent, setMagicSent] = useState(false);
+  const [notice, setNotice] = useState<"magic" | "confirm" | null>(null);
 
-  async function handlePassword(e: React.FormEvent) {
+  const isSignup = mode === "signup";
+
+  function switchMode(nextMode: "signin" | "signup") {
+    setMode(nextMode);
+    setError(null);
+    setPassword("");
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const res = await session.signInWithPassword(email.trim(), password);
-    setBusy(false);
-    if (res.error) setError(res.error);
-    // On success, onAuthStateChange triggers the redirect effect.
+    if (isSignup) {
+      const res = await session.signUp(name.trim(), email.trim(), password);
+      setBusy(false);
+      if (res.error) setError(res.error);
+      else if (res.needsConfirmation) setNotice("confirm");
+      // Otherwise a session already exists — the redirect effect handles it.
+    } else {
+      const res = await session.signInWithPassword(email.trim(), password);
+      setBusy(false);
+      if (res.error) setError(res.error);
+      // On success, onAuthStateChange triggers the redirect effect.
+    }
   }
 
   async function handleMagicLink() {
@@ -133,18 +151,27 @@ function SupabaseLogin({ next }: { next: string }) {
     const res = await session.signInWithMagicLink(email.trim(), next);
     setBusy(false);
     if (res.error) setError(res.error);
-    else setMagicSent(true);
+    else setNotice("magic");
   }
 
-  if (magicSent) {
+  if (notice) {
     return (
       <Card>
         <CardContent className="p-6 text-center space-y-2">
           <Mail className="mx-auto h-8 w-8 text-primary" />
           <p className="text-sm font-medium">Check your email</p>
           <p className="text-xs text-muted-foreground">
-            We sent a sign-in link to <strong>{email}</strong>. Open it on this
-            device to finish signing in.
+            {notice === "confirm" ? (
+              <>
+                We sent a confirmation link to <strong>{email}</strong>. Open
+                it to activate your account, then come back and sign in.
+              </>
+            ) : (
+              <>
+                We sent a sign-in link to <strong>{email}</strong>. Open it on
+                this device to finish signing in.
+              </>
+            )}
           </p>
         </CardContent>
       </Card>
@@ -154,7 +181,40 @@ function SupabaseLogin({ next }: { next: string }) {
   return (
     <Card>
       <CardContent className="p-5">
-        <form onSubmit={handlePassword} className="space-y-4">
+        <div className="mb-5 grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+          {(["signin", "signup"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => switchMode(m)}
+              className={cn(
+                "rounded-md py-1.5 text-sm font-medium transition-colors",
+                mode === m
+                  ? "bg-card text-foreground shadow-soft"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {m === "signin" ? "Sign in" : "Create account"}
+            </button>
+          ))}
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {isSignup && (
+            <div className="space-y-1.5">
+              <Label htmlFor="name">Full name</Label>
+              <Input
+                id="name"
+                type="text"
+                autoComplete="name"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Alex Rivera"
+              />
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -167,16 +227,24 @@ function SupabaseLogin({ next }: { next: string }) {
               placeholder="you@advantage.org"
             />
           </div>
+
           <div className="space-y-1.5">
             <Label htmlFor="password">Password</Label>
             <Input
               id="password"
               type="password"
-              autoComplete="current-password"
+              autoComplete={isSignup ? "new-password" : "current-password"}
+              required
+              minLength={isSignup ? 6 : undefined}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
             />
+            {isSignup && (
+              <p className="text-[11px] text-muted-foreground">
+                Use at least 6 characters.
+              </p>
+            )}
           </div>
 
           {error && (
@@ -186,26 +254,36 @@ function SupabaseLogin({ next }: { next: string }) {
           )}
 
           <Button type="submit" className="w-full" disabled={busy}>
-            {busy ? "Signing in…" : "Sign in"}
+            {busy
+              ? isSignup
+                ? "Creating account…"
+                : "Signing in…"
+              : isSignup
+                ? "Create account"
+                : "Sign in"}
           </Button>
         </form>
 
-        <div className="my-4 flex items-center gap-3 text-[11px] text-muted-foreground">
-          <span className="h-px flex-1 bg-border" />
-          OR
-          <span className="h-px flex-1 bg-border" />
-        </div>
+        {!isSignup && (
+          <>
+            <div className="my-4 flex items-center gap-3 text-[11px] text-muted-foreground">
+              <span className="h-px flex-1 bg-border" />
+              OR
+              <span className="h-px flex-1 bg-border" />
+            </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full"
-          disabled={busy}
-          onClick={handleMagicLink}
-        >
-          <Mail className="h-4 w-4" />
-          Email me a sign-in link
-        </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={busy}
+              onClick={handleMagicLink}
+            >
+              <Mail className="h-4 w-4" />
+              Email me a sign-in link
+            </Button>
+          </>
+        )}
       </CardContent>
     </Card>
   );

@@ -31,6 +31,7 @@ import { TaskRow } from "@/components/task/task-row";
 import { TaskDrawer } from "@/components/task/task-drawer";
 import { TaskFormDialog } from "@/components/task/task-form-dialog";
 import { PageHeader } from "@/components/page-header";
+import { DashboardTour } from "@/components/onboarding/dashboard-tour";
 import { useRole } from "@/lib/role-context";
 import {
   useMessages,
@@ -333,6 +334,8 @@ export default function DashboardPage() {
         open={creating}
         onOpenChange={setCreating}
       />
+
+      <DashboardTour />
     </div>
   );
 }

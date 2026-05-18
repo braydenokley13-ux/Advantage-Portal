@@ -12,6 +12,7 @@ import { resolveDataMode } from "@/lib/supabase/env";
 
 const PROTECTED_PREFIXES = [
   "/dashboard",
+  "/welcome",
   "/board",
   "/calendar",
   "/messages",
