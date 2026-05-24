@@ -7,12 +7,12 @@
  *   Secret: any random string → set as SUPABASE_AUTH_HOOK_SECRET env var
  *
  * Supabase calls this route for every auth email (magic link, confirmation,
- * invite, password reset) and we send the email via Resend instead.
+ * invite, password reset) and we send it via Gmail SMTP using Nodemailer.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 import {
   magicLinkEmail,
   confirmEmail,
@@ -20,8 +20,7 @@ import {
   passwordResetEmail,
 } from "@/emails/templates";
 
-// Supabase sends a JWT (HS256) in Authorization: Bearer <jwt>.
-// This verifies the signature without an external JWT library.
+// Supabase signs hook requests with a JWT (HS256) in Authorization: Bearer <jwt>.
 function verifyHookJWT(authHeader: string | null, secret: string): boolean {
   if (!authHeader?.startsWith("Bearer ")) return false;
   const token = authHeader.slice(7);
@@ -56,6 +55,18 @@ const SUBJECTS: Record<string, string> = {
   email_change_current: "Confirm your email change",
   email_change_new: "Confirm your new email address",
 };
+
+function createTransport() {
+  return nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false, // uses STARTTLS on port 587
+    auth: {
+      user: process.env.GMAIL_USER,
+      pass: process.env.GMAIL_APP_PASSWORD,
+    },
+  });
+}
 
 export async function POST(request: NextRequest) {
   // ── Auth verification ──────────────────────────────────────────────────────
@@ -93,12 +104,11 @@ export async function POST(request: NextRequest) {
   const verifyType = VERIFY_TYPE[email_action_type];
 
   if (!verifyType) {
-    // Unknown type — return 200 so Supabase doesn't retry indefinitely.
     console.warn(`[send-email] Unknown email_action_type: ${email_action_type}`);
     return NextResponse.json({});
   }
 
-  // Build the standard Supabase confirmation URL.
+  // Standard Supabase confirmation URL.
   const confirmationUrl =
     `${supabaseUrl}/auth/v1/verify` +
     `?token=${token_hash}` +
@@ -123,25 +133,24 @@ export async function POST(request: NextRequest) {
       html = passwordResetEmail(props);
       break;
     default:
-      // email_change flows — reuse confirmation template
       html = confirmEmail(props);
   }
 
-  // ── Send via Resend ────────────────────────────────────────────────────────
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    console.error("[send-email] RESEND_API_KEY is not set");
+  // ── Send via Gmail SMTP ────────────────────────────────────────────────────
+  const gmailUser = process.env.GMAIL_USER;
+  if (!gmailUser || !process.env.GMAIL_APP_PASSWORD) {
+    console.error("[send-email] GMAIL_USER or GMAIL_APP_PASSWORD is not set");
     return NextResponse.json({ error: "Email service not configured" }, { status: 500 });
   }
 
-  const resend = new Resend(apiKey);
-  const from = process.env.RESEND_FROM_EMAIL ?? "noreply@example.com";
   const subject = SUBJECTS[email_action_type] ?? "Advantage Portal";
+  const from = `"Advantage Portal" <${gmailUser}>`;
 
-  const { error } = await resend.emails.send({ from, to: email, subject, html });
-
-  if (error) {
-    console.error("[send-email] Resend error:", error);
+  try {
+    const transporter = createTransport();
+    await transporter.sendMail({ from, to: email, subject, html });
+  } catch (err) {
+    console.error("[send-email] Gmail SMTP error:", err);
     return NextResponse.json({ error: "Failed to send email" }, { status: 500 });
   }
 
