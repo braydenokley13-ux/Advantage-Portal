@@ -25,18 +25,30 @@ export function GET() {
   return Response.json({ ok: true, endpoint: "send-email hook" });
 }
 
-// Supabase signs hook requests with a JWT (HS256) in Authorization: Bearer <jwt>.
-function verifyHookJWT(authHeader: string | null, secret: string): boolean {
+// Supabase can send the hook secret either as a raw Bearer token or as a
+// HS256 JWT. We try both so the verification works regardless of format.
+function verifyHookSecret(authHeader: string | null, secret: string): boolean {
   if (!authHeader?.startsWith("Bearer ")) return false;
   const token = authHeader.slice(7);
-  const parts = token.split(".");
-  if (parts.length !== 3) return false;
-  const [header, payload, sig] = parts;
-  const hmac = createHmac("sha256", secret);
-  hmac.update(`${header}.${payload}`);
-  const expected = hmac.digest("base64url");
+
+  // Attempt 1: raw secret comparison (some Supabase versions send it plain)
   try {
-    return timingSafeEqual(Buffer.from(expected), Buffer.from(sig));
+    const a = Buffer.from(token, "utf8");
+    const b = Buffer.from(secret, "utf8");
+    if (a.length === b.length && timingSafeEqual(a, b)) return true;
+  } catch {}
+
+  // Attempt 2: HS256 JWT verification
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return false;
+    const [header, payload, sig] = parts;
+    const hmac = createHmac("sha256", secret);
+    hmac.update(`${header}.${payload}`);
+    const expected = hmac.digest("base64url").replace(/=/g, "");
+    const cleanSig = sig.replace(/=/g, "");
+    if (expected.length !== cleanSig.length) return false;
+    return timingSafeEqual(Buffer.from(expected), Buffer.from(cleanSig));
   } catch {
     return false;
   }
@@ -78,7 +90,7 @@ export async function POST(request: NextRequest) {
   const hookSecret = process.env.SUPABASE_AUTH_HOOK_SECRET;
   if (hookSecret) {
     const auth = request.headers.get("authorization");
-    if (!verifyHookJWT(auth, hookSecret)) {
+    if (!verifyHookSecret(auth, hookSecret)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
   }
