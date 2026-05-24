@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { LogIn, Mail, ShieldCheck } from "lucide-react";
+import { LogIn, ShieldCheck } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -112,6 +112,7 @@ function DemoLogin({ next }: { next: string }) {
 
 function SupabaseLogin({ next }: { next: string }) {
   const search = useSearchParams();
+  const router = useRouter();
   const session = useSession();
 
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -122,7 +123,6 @@ function SupabaseLogin({ next }: { next: string }) {
   const [error, setError] = useState<string | null>(
     search.get("error") ? "Sign-in link was invalid or expired. Try again." : null
   );
-  const [notice, setNotice] = useState<"magic" | "confirm" | null>(null);
 
   const isSignup = mode === "signup";
 
@@ -139,52 +139,17 @@ function SupabaseLogin({ next }: { next: string }) {
     if (isSignup) {
       const res = await session.signUp(name.trim(), email.trim(), password);
       setBusy(false);
-      if (res.error) setError(res.error);
-      else if (res.needsConfirmation) setNotice("confirm");
-      // Otherwise a session already exists — the redirect effect handles it.
+      if (res.error) { setError(res.error); return; }
+      // Account created — sign them in immediately.
+      const signInRes = await session.signInWithPassword(email.trim(), password);
+      if (signInRes.error) { setError(signInRes.error); return; }
+      router.replace(next);
     } else {
       const res = await session.signInWithPassword(email.trim(), password);
       setBusy(false);
       if (res.error) setError(res.error);
       // On success, onAuthStateChange triggers the redirect effect.
     }
-  }
-
-  async function handleMagicLink() {
-    if (!email.trim()) {
-      setError("Enter your email first.");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    const res = await session.signInWithMagicLink(email.trim(), next);
-    setBusy(false);
-    if (res.error) setError(res.error);
-    else setNotice("magic");
-  }
-
-  if (notice) {
-    return (
-      <Card>
-        <CardContent className="p-6 text-center space-y-2">
-          <Mail className="mx-auto h-8 w-8 text-primary" />
-          <p className="text-sm font-medium">Check your email</p>
-          <p className="text-xs text-muted-foreground">
-            {notice === "confirm" ? (
-              <>
-                We sent a confirmation link to <strong>{email}</strong>. Open
-                it to activate your account, then come back and sign in.
-              </>
-            ) : (
-              <>
-                We sent a sign-in link to <strong>{email}</strong>. Open it on
-                this device to finish signing in.
-              </>
-            )}
-          </p>
-        </CardContent>
-      </Card>
-    );
   }
 
   return (
@@ -272,27 +237,6 @@ function SupabaseLogin({ next }: { next: string }) {
                 : "Sign in"}
           </Button>
         </form>
-
-        {!isSignup && (
-          <>
-            <div className="my-4 flex items-center gap-3 text-[11px] text-muted-foreground">
-              <span className="h-px flex-1 bg-border" />
-              OR
-              <span className="h-px flex-1 bg-border" />
-            </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              disabled={busy}
-              onClick={handleMagicLink}
-            >
-              <Mail className="h-4 w-4" />
-              Email me a sign-in link
-            </Button>
-          </>
-        )}
       </CardContent>
     </Card>
   );

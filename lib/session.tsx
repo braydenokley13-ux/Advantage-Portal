@@ -30,7 +30,7 @@ type SessionState = {
   signedIn: boolean;
 };
 
-type AuthResult = { error?: string; needsConfirmation?: boolean };
+type AuthResult = { error?: string };
 
 type SessionValue = {
   currentUser: User | null;
@@ -46,9 +46,7 @@ type SessionValue = {
   signInAsDemoUser: (userId: string) => void;
   /** Supabase-mode email + password sign-in. */
   signInWithPassword: (email: string, password: string) => Promise<AuthResult>;
-  /** Supabase-mode magic-link (email OTP) sign-in. */
-  signInWithMagicLink: (email: string, next?: string) => Promise<AuthResult>;
-  /** Supabase-mode self-service sign-up (open registration). */
+  /** Supabase-mode self-service sign-up (defaults to writer role). */
   signUp: (name: string, email: string, password: string) => Promise<AuthResult>;
   /** Supabase-mode: update the signed-in user's own display name + avatar. */
   updateProfile: (patch: {
@@ -210,24 +208,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  const signInWithMagicLink = useCallback(
-    async (email: string, next?: string): Promise<AuthResult> => {
-      const sb = getSupabaseBrowserClient();
-      if (!sb) return { error: "Supabase is not configured." };
-      const appUrl =
-        process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
-      const redirect = next
-        ? `${appUrl}/auth/callback?next=${encodeURIComponent(next)}`
-        : `${appUrl}/auth/callback`;
-      const { error } = await sb.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: redirect },
-      });
-      return error ? { error: error.message } : {};
-    },
-    []
-  );
-
   const signUp = useCallback(
     async (
       name: string,
@@ -236,19 +216,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     ): Promise<AuthResult> => {
       const sb = getSupabaseBrowserClient();
       if (!sb) return { error: "Supabase is not configured." };
-      const appUrl =
-        process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
-      const { data, error } = await sb.auth.signUp({
+      const { error } = await sb.auth.signUp({
         email,
         password,
-        options: {
-          data: { name },
-          emailRedirectTo: `${appUrl}/auth/callback`,
-        },
+        options: { data: { name } },
       });
-      if (error) return { error: error.message };
-      // No session in the response means email confirmation is required.
-      return { needsConfirmation: !data.session };
+      return error ? { error: error.message } : {};
     },
     []
   );
@@ -302,7 +275,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         allUsers: [],
         signInAsDemoUser,
         signInWithPassword,
-        signInWithMagicLink,
         signUp,
         updateProfile,
         signOut,
@@ -321,7 +293,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       allUsers: users,
       signInAsDemoUser,
       signInWithPassword,
-      signInWithMagicLink,
       signUp,
       updateProfile,
       signOut,
@@ -335,7 +306,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     users,
     signInAsDemoUser,
     signInWithPassword,
-    signInWithMagicLink,
     signUp,
     updateProfile,
     signOut,
