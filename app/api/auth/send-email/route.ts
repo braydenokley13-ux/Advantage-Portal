@@ -4,7 +4,8 @@
  * Configure in Supabase Dashboard → Authentication → Hooks → Send Email:
  *   Type: HTTPS
  *   URL:  https://<your-app>/api/auth/send-email
- *   Secret: any random string → set as SUPABASE_AUTH_HOOK_SECRET env var
+ *   Secret: click "Generate secret" → copy the full v1,whsec_... value
+ *           → set as SUPABASE_AUTH_HOOK_SECRET in Vercel env vars
  *
  * Supabase calls this route for every auth email (magic link, confirmation,
  * invite, password reset) and we send it via Gmail SMTP using Nodemailer.
@@ -20,38 +21,74 @@ import {
   passwordResetEmail,
 } from "@/emails/templates";
 
-// Health check — lets you confirm the endpoint is reachable before wiring up Supabase.
+// Health check — visit this URL in a browser to confirm the endpoint is live.
 export function GET() {
   return Response.json({ ok: true, endpoint: "send-email hook" });
 }
 
-// Supabase can send the hook secret either as a raw Bearer token or as a
-// HS256 JWT. We try both so the verification works regardless of format.
-function verifyHookSecret(authHeader: string | null, secret: string): boolean {
-  if (!authHeader?.startsWith("Bearer ")) return false;
-  const token = authHeader.slice(7);
+// Extracts the raw signing key bytes from a Supabase secret.
+// Supabase generates secrets in "v1,whsec_<base64>" format — the actual
+// key is the base64-decoded portion after the prefix.
+function extractKeyBytes(secret: string): Buffer {
+  if (secret.startsWith("v1,whsec_")) {
+    return Buffer.from(secret.slice("v1,whsec_".length), "base64");
+  }
+  return Buffer.from(secret, "utf8");
+}
 
-  // Attempt 1: raw secret comparison (some Supabase versions send it plain)
-  try {
-    const a = Buffer.from(token, "utf8");
-    const b = Buffer.from(secret, "utf8");
-    if (a.length === b.length && timingSafeEqual(a, b)) return true;
-  } catch {}
+// Verifies the Supabase hook request. Handles two formats Supabase may use:
+//  1. Svix-style: svix-id / svix-timestamp / svix-signature headers
+//  2. JWT Bearer: Authorization: Bearer <hs256-jwt>
+function verifyHook(req: NextRequest, rawBody: string, secret: string): boolean {
+  const keyBytes = extractKeyBytes(secret);
 
-  // Attempt 2: HS256 JWT verification
+  // ── Svix (webhook service Supabase uses for some hook types) ───────────────
+  const svixId = req.headers.get("svix-id");
+  const svixTs = req.headers.get("svix-timestamp");
+  const svixSig = req.headers.get("svix-signature");
+
+  if (svixId && svixTs && svixSig) {
+    const toSign = `${svixId}.${svixTs}.${rawBody}`;
+    const hmac = createHmac("sha256", keyBytes);
+    hmac.update(toSign, "utf8");
+    const computed = hmac.digest("base64");
+
+    for (const part of svixSig.split(" ")) {
+      const comma = part.indexOf(",");
+      if (comma === -1) continue;
+      const version = part.slice(0, comma);
+      const sigB64 = part.slice(comma + 1);
+      if (version !== "v1") continue;
+      try {
+        const a = Buffer.from(computed, "base64");
+        const b = Buffer.from(sigB64, "base64");
+        if (a.length === b.length && timingSafeEqual(a, b)) return true;
+      } catch {}
+    }
+    return false; // svix headers present → must pass svix check
+  }
+
+  // ── JWT Bearer ─────────────────────────────────────────────────────────────
+  const auth = req.headers.get("authorization");
+  if (!auth?.startsWith("Bearer ")) return false;
+  const token = auth.slice(7);
+
+  // Try HS256 JWT signed with the decoded key bytes
   try {
     const parts = token.split(".");
-    if (parts.length !== 3) return false;
-    const [header, payload, sig] = parts;
-    const hmac = createHmac("sha256", secret);
-    hmac.update(`${header}.${payload}`);
-    const expected = hmac.digest("base64url").replace(/=/g, "");
-    const cleanSig = sig.replace(/=/g, "");
-    if (expected.length !== cleanSig.length) return false;
-    return timingSafeEqual(Buffer.from(expected), Buffer.from(cleanSig));
-  } catch {
-    return false;
-  }
+    if (parts.length === 3) {
+      const [header, payload, sig] = parts;
+      const hmac = createHmac("sha256", keyBytes);
+      hmac.update(`${header}.${payload}`);
+      const expected = hmac.digest("base64url").replace(/=/g, "");
+      const cleanSig = sig.replace(/=/g, "");
+      if (expected.length === cleanSig.length) {
+        return timingSafeEqual(Buffer.from(expected), Buffer.from(cleanSig));
+      }
+    }
+  } catch {}
+
+  return false;
 }
 
 // Maps Supabase's email_action_type to the URL verify type param.
@@ -77,7 +114,7 @@ function createTransport() {
   return nodemailer.createTransport({
     host: "smtp.gmail.com",
     port: 587,
-    secure: false, // uses STARTTLS on port 587
+    secure: false, // STARTTLS on port 587
     auth: {
       user: process.env.GMAIL_USER,
       pass: process.env.GMAIL_APP_PASSWORD,
@@ -86,11 +123,13 @@ function createTransport() {
 }
 
 export async function POST(request: NextRequest) {
+  const rawBody = await request.text();
+
   // ── Auth verification ──────────────────────────────────────────────────────
   const hookSecret = process.env.SUPABASE_AUTH_HOOK_SECRET;
   if (hookSecret) {
-    const auth = request.headers.get("authorization");
-    if (!verifyHookSecret(auth, hookSecret)) {
+    if (!verifyHook(request, rawBody, hookSecret)) {
+      console.error("[send-email] Hook signature verification failed");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
   }
@@ -108,7 +147,7 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    payload = await request.json();
+    payload = JSON.parse(rawBody);
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
@@ -125,7 +164,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({});
   }
 
-  // Standard Supabase confirmation URL.
   const confirmationUrl =
     `${supabaseUrl}/auth/v1/verify` +
     `?token=${token_hash}` +
