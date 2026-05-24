@@ -1,63 +1,83 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import nodemailer from "nodemailer";
+import { z } from "zod";
+import { authCallbackUrl } from "@/lib/auth/redirects";
+import { normalizeEmailAddress, sendEmail } from "@/lib/email/mailer";
+import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { magicLinkEmail } from "@/emails/templates";
 
+const MagicLinkRequest = z.object({
+  email: z.string().trim().email(),
+  next: z.string().optional(),
+});
+
+function friendlyAuthError(message: string) {
+  if (/not found|invalid/i.test(message)) {
+    return "No active account was found for that email. Check the address or create an account first.";
+  }
+  return message;
+}
+
 export async function POST(req: NextRequest) {
-  const { email, next } = await req.json();
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceKey) {
-    return NextResponse.json({ error: "Server not configured" }, { status: 500 });
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  const redirectTo = next
-    ? `${appUrl}/auth/callback?next=${encodeURIComponent(next)}`
-    : `${appUrl}/auth/callback`;
-
-  // Generate the magic link server-side — bypasses all Supabase email rate limits.
-  const admin = createClient(supabaseUrl, serviceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-
-  const { data, error } = await admin.auth.admin.generateLink({
-    type: "magiclink",
-    email,
-    options: { redirectTo },
-  });
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+  const parsed = MagicLinkRequest.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Enter a valid email address." },
+      { status: 400 }
+    );
   }
 
-  const confirmationUrl = data.properties.action_link;
-
-  const gmailUser = process.env.GMAIL_USER;
-  const gmailPass = process.env.GMAIL_APP_PASSWORD;
-  if (!gmailUser || !gmailPass) {
-    return NextResponse.json({ error: "Email service not configured" }, { status: 500 });
+  const email = normalizeEmailAddress(parsed.data.email);
+  if (!email) {
+    return NextResponse.json(
+      { error: "Enter a valid email address." },
+      { status: 400 }
+    );
   }
 
-  const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
-    auth: { user: gmailUser, pass: gmailPass },
-  });
+  const redirectTo = authCallbackUrl(req, parsed.data.next);
 
   try {
-    await transporter.sendMail({
-      from: `"Advantage Portal" <${gmailUser}>`,
+    const admin = getSupabaseAdminClient();
+    const { data, error } = await admin.auth.admin.generateLink({
+      type: "magiclink",
+      email,
+      options: { redirectTo },
+    });
+
+    if (error) {
+      return NextResponse.json(
+        { error: friendlyAuthError(error.message) },
+        { status: 400 }
+      );
+    }
+
+    const confirmationUrl = data.properties.action_link;
+    if (!confirmationUrl) {
+      return NextResponse.json(
+        { error: "Supabase did not return a sign-in link." },
+        { status: 500 }
+      );
+    }
+
+    await sendEmail({
       to: email,
       subject: "Your Advantage Portal sign-in link",
       html: magicLinkEmail({ email, confirmationUrl }),
     });
-  } catch (err) {
-    console.error("[magic-link] Gmail SMTP error:", err);
-    return NextResponse.json({ error: "Failed to send email" }, { status: 500 });
-  }
 
-  return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("[magic-link] Email flow failed:", err);
+    return NextResponse.json(
+      { error: "We could not send that sign-in email. Try again in a minute." },
+      { status: 500 }
+    );
+  }
 }

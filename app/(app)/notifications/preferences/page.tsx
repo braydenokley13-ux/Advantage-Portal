@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Mail } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { PageHeader } from "@/components/page-header";
 import { NOTIFICATION_META, NOTIFICATION_ORDER } from "@/lib/notifications";
 import { useRole } from "@/lib/role-context";
+import { useSession } from "@/lib/session";
 import type { NotificationKind } from "@/lib/types";
 
 type Channel = "in_app" | "push" | "email";
@@ -36,8 +37,13 @@ const STORAGE_KEY = "advantage-portal:notif-prefs";
 
 export default function NotificationPreferencesPage() {
   const { user } = useRole();
+  const session = useSession();
   const key = `${STORAGE_KEY}:${user.id}`;
   const [prefs, setPrefs] = useState<Prefs>(defaultPrefs());
+  const [testStatus, setTestStatus] = useState<
+    "idle" | "sending" | "sent" | "error"
+  >("idle");
+  const [testError, setTestError] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -66,6 +72,35 @@ export default function NotificationPreferencesPage() {
     });
   }
 
+  async function sendTestEmail() {
+    setTestStatus("sending");
+    setTestError(null);
+
+    try {
+      const res = await fetch("/api/email/notification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: user.id,
+          kind: "announcement",
+          title: "Your Advantage Portal email test worked",
+          body: "This confirms app emails can reach your inbox.",
+          actionPath: "/notifications/preferences",
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok || json.error) {
+        throw new Error(json.error ?? "The test email failed.");
+      }
+      setTestStatus("sent");
+    } catch (err) {
+      setTestStatus("error");
+      setTestError(
+        err instanceof Error ? err.message : "The test email failed."
+      );
+    }
+  }
+
   return (
     <div className="container py-6 md:py-8 space-y-6 max-w-3xl">
       <Button asChild variant="ghost" size="sm" className="-ml-2">
@@ -78,6 +113,47 @@ export default function NotificationPreferencesPage() {
         title="Notification preferences"
         description="Choose how you want to be reached for each event type."
       />
+
+      <Card>
+        <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-blue-100 text-blue-700">
+              <Mail className="h-4 w-4" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Email delivery test</p>
+              <p className="text-xs text-muted-foreground">
+                Sends a real email to {user.email} so you can confirm the
+                portal can reach your inbox.
+              </p>
+              {session.mode !== "supabase" && (
+                <p className="text-xs text-muted-foreground">
+                  Real email delivery turns on when the app is running in
+                  Supabase mode.
+                </p>
+              )}
+              {testStatus === "sent" && (
+                <p className="text-xs font-medium text-emerald-700">
+                  Test email sent. Check your inbox.
+                </p>
+              )}
+              {testStatus === "error" && (
+                <p className="text-xs font-medium text-destructive">
+                  {testError}
+                </p>
+              )}
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={session.mode !== "supabase" || testStatus === "sending"}
+            onClick={sendTestEmail}
+          >
+            {testStatus === "sending" ? "Sending..." : "Send test email"}
+          </Button>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

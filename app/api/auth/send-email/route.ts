@@ -1,19 +1,18 @@
 /**
  * Supabase "Send Email" auth hook endpoint.
  *
- * Configure in Supabase Dashboard → Authentication → Hooks → Send Email:
+ * Configure in Supabase Dashboard -> Authentication -> Hooks -> Send Email:
  *   Type: HTTPS
  *   URL:  https://<your-app>/api/auth/send-email
- *   Secret: click "Generate secret" → copy the full v1,whsec_... value
- *           → set as SUPABASE_AUTH_HOOK_SECRET in Vercel env vars
- *
- * Supabase calls this route for every auth email (magic link, confirmation,
- * invite, password reset) and we send it via Gmail SMTP using Nodemailer.
+ *   Secret: click "Generate secret", then set the full v1,whsec_... value
+ *           as SUPABASE_AUTH_HOOK_SECRET in the app environment.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
-import nodemailer from "nodemailer";
+import { z } from "zod";
+import { normalizeEmailAddress, sendEmail } from "@/lib/email/mailer";
+import { getSupabaseProjectUrl } from "@/lib/supabase/admin";
 import {
   magicLinkEmail,
   confirmEmail,
@@ -21,191 +20,243 @@ import {
   passwordResetEmail,
 } from "@/emails/templates";
 
-// Health check — visit this URL in a browser to confirm the endpoint is live.
 export function GET() {
   return Response.json({ ok: true, endpoint: "send-email hook" });
 }
 
-// Extracts the raw signing key bytes from a Supabase secret.
-// Supabase generates secrets in "v1,whsec_<base64>" format — the actual
-// key is the base64-decoded portion after the prefix.
-function extractKeyBytes(secret: string): Buffer {
-  if (secret.startsWith("v1,whsec_")) {
-    return Buffer.from(secret.slice("v1,whsec_".length), "base64");
-  }
-  return Buffer.from(secret, "utf8");
-}
+const EmailAction = z.enum([
+  "signup",
+  "magic_link",
+  "invite",
+  "recovery",
+  "email_change",
+  "email_change_current",
+  "email_change_new",
+]);
 
-// Verifies the Supabase hook request. Handles two formats Supabase may use:
-//  1. Svix-style: svix-id / svix-timestamp / svix-signature headers
-//  2. JWT Bearer: Authorization: Bearer <hs256-jwt>
-function verifyHook(req: NextRequest, rawBody: string, secret: string): boolean {
-  const keyBytes = extractKeyBytes(secret);
+const HookPayload = z.object({
+  user: z.object({
+    email: z.string().email(),
+    new_email: z.string().email().optional().or(z.literal("")),
+  }),
+  email_data: z.object({
+    token_hash: z.string().optional().default(""),
+    token_hash_new: z.string().optional().default(""),
+    redirect_to: z.string().url(),
+    email_action_type: EmailAction,
+  }),
+});
 
-  // ── Svix (webhook service Supabase uses for some hook types) ───────────────
-  const svixId = req.headers.get("svix-id");
-  const svixTs = req.headers.get("svix-timestamp");
-  const svixSig = req.headers.get("svix-signature");
+type HookPayload = z.infer<typeof HookPayload>;
 
-  if (svixId && svixTs && svixSig) {
-    const toSign = `${svixId}.${svixTs}.${rawBody}`;
-    const hmac = createHmac("sha256", keyBytes);
-    hmac.update(toSign, "utf8");
-    const computed = hmac.digest("base64");
-
-    for (const part of svixSig.split(" ")) {
-      const comma = part.indexOf(",");
-      if (comma === -1) continue;
-      const version = part.slice(0, comma);
-      const sigB64 = part.slice(comma + 1);
-      if (version !== "v1") continue;
-      try {
-        const a = Buffer.from(computed, "base64");
-        const b = Buffer.from(sigB64, "base64");
-        if (a.length === b.length && timingSafeEqual(a, b)) return true;
-      } catch {}
-    }
-    return false; // svix headers present → must pass svix check
-  }
-
-  // ── JWT Bearer ─────────────────────────────────────────────────────────────
-  const auth = req.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) return false;
-  const token = auth.slice(7);
-
-  // Try HS256 JWT signed with the decoded key bytes
-  try {
-    const parts = token.split(".");
-    if (parts.length === 3) {
-      const [header, payload, sig] = parts;
-      const hmac = createHmac("sha256", keyBytes);
-      hmac.update(`${header}.${payload}`);
-      const expected = hmac.digest("base64url").replace(/=/g, "");
-      const cleanSig = sig.replace(/=/g, "");
-      if (expected.length === cleanSig.length) {
-        return timingSafeEqual(Buffer.from(expected), Buffer.from(cleanSig));
-      }
-    }
-  } catch {}
-
-  return false;
-}
-
-// Maps Supabase's email_action_type to the URL verify type param.
-const VERIFY_TYPE: Record<string, string> = {
+const VERIFY_TYPE: Record<z.infer<typeof EmailAction>, string> = {
   signup: "signup",
   magic_link: "magiclink",
   invite: "invite",
   recovery: "recovery",
+  email_change: "email_change",
   email_change_current: "email_change",
   email_change_new: "email_change",
 };
 
-const SUBJECTS: Record<string, string> = {
+const SUBJECTS: Record<z.infer<typeof EmailAction>, string> = {
   magic_link: "Your Advantage Portal sign-in link",
   signup: "Confirm your Advantage Portal account",
   invite: "You've been invited to Advantage Portal",
   recovery: "Reset your Advantage Portal password",
-  email_change_current: "Confirm your email change",
+  email_change: "Confirm your email change",
+  email_change_current: "Confirm your current email address",
   email_change_new: "Confirm your new email address",
 };
 
-function createTransport() {
-  return nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false, // STARTTLS on port 587
-    auth: {
-      user: process.env.GMAIL_USER,
-      pass: process.env.GMAIL_APP_PASSWORD,
-    },
+function extractKeyBytes(secret: string): Buffer {
+  if (secret.startsWith("v1,whsec_")) {
+    return Buffer.from(secret.slice("v1,whsec_".length), "base64");
+  }
+  if (secret.startsWith("whsec_")) {
+    return Buffer.from(secret.slice("whsec_".length), "base64");
+  }
+  return Buffer.from(secret, "utf8");
+}
+
+function hasSafeEqual(a: Buffer, b: Buffer) {
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function verifyWebhookSignature(
+  req: NextRequest,
+  rawBody: string,
+  secret: string
+): boolean {
+  const id = req.headers.get("webhook-id") ?? req.headers.get("svix-id");
+  const timestamp =
+    req.headers.get("webhook-timestamp") ?? req.headers.get("svix-timestamp");
+  const signature =
+    req.headers.get("webhook-signature") ?? req.headers.get("svix-signature");
+
+  if (!id || !timestamp || !signature) return false;
+
+  const hmac = createHmac("sha256", extractKeyBytes(secret));
+  hmac.update(`${id}.${timestamp}.${rawBody}`, "utf8");
+  const expected = hmac.digest("base64");
+
+  for (const part of signature.split(" ")) {
+    const comma = part.indexOf(",");
+    if (comma === -1) continue;
+    const version = part.slice(0, comma);
+    const sig = part.slice(comma + 1);
+    if (version !== "v1") continue;
+    try {
+      if (
+        hasSafeEqual(Buffer.from(expected, "base64"), Buffer.from(sig, "base64"))
+      ) {
+        return true;
+      }
+    } catch {
+      // Ignore malformed candidate signatures and keep checking.
+    }
+  }
+
+  return false;
+}
+
+function verifyJwtBearer(req: NextRequest, rawBody: string, secret: string) {
+  void rawBody;
+  const auth = req.headers.get("authorization");
+  if (!auth?.startsWith("Bearer ")) return false;
+  const token = auth.slice(7);
+
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return false;
+    const [header, payload, sig] = parts;
+    const hmac = createHmac("sha256", extractKeyBytes(secret));
+    hmac.update(`${header}.${payload}`);
+    const expected = hmac.digest("base64url").replace(/=/g, "");
+    const cleanSig = sig.replace(/=/g, "");
+    return hasSafeEqual(Buffer.from(expected), Buffer.from(cleanSig));
+  } catch {
+    return false;
+  }
+}
+
+function verifyHook(req: NextRequest, rawBody: string, secret: string): boolean {
+  return (
+    verifyWebhookSignature(req, rawBody, secret) ||
+    verifyJwtBearer(req, rawBody, secret)
+  );
+}
+
+function buildConfirmationUrl(
+  supabaseUrl: string,
+  tokenHash: string,
+  actionType: z.infer<typeof EmailAction>,
+  redirectTo: string
+) {
+  const verifyType = VERIFY_TYPE[actionType];
+  const url = new URL("/auth/v1/verify", supabaseUrl);
+  url.searchParams.set("token", tokenHash);
+  url.searchParams.set("type", verifyType);
+  url.searchParams.set("redirect_to", redirectTo);
+  return url.toString();
+}
+
+function templateFor(
+  actionType: z.infer<typeof EmailAction>,
+  props: { email: string; confirmationUrl: string }
+) {
+  switch (actionType) {
+    case "magic_link":
+      return magicLinkEmail(props);
+    case "signup":
+      return confirmEmail(props);
+    case "invite":
+      return inviteEmail(props);
+    case "recovery":
+      return passwordResetEmail(props);
+    default:
+      return confirmEmail(props);
+  }
+}
+
+async function sendHookEmail(
+  payload: HookPayload,
+  recipientEmail: string,
+  tokenHash: string
+) {
+  const email = normalizeEmailAddress(recipientEmail);
+  if (!email || !tokenHash) return;
+
+  const actionType = payload.email_data.email_action_type;
+  const confirmationUrl = buildConfirmationUrl(
+    getSupabaseProjectUrl(),
+    tokenHash,
+    actionType,
+    payload.email_data.redirect_to
+  );
+
+  await sendEmail({
+    to: email,
+    subject: SUBJECTS[actionType] ?? "Advantage Portal",
+    html: templateFor(actionType, { email, confirmationUrl }),
   });
 }
 
 export async function POST(request: NextRequest) {
   const rawBody = await request.text();
-
-  // ── Auth verification ──────────────────────────────────────────────────────
   const hookSecret = process.env.SUPABASE_AUTH_HOOK_SECRET;
-  if (hookSecret) {
-    if (!verifyHook(request, rawBody, hookSecret)) {
-      console.error("[send-email] Hook signature verification failed");
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+
+  if (!hookSecret) {
+    console.error("[send-email] SUPABASE_AUTH_HOOK_SECRET is not set");
+    return NextResponse.json(
+      { error: "Hook secret is not configured" },
+      { status: 500 }
+    );
   }
 
-  // ── Parse payload ──────────────────────────────────────────────────────────
-  let payload: {
-    user: { email: string };
-    email_data: {
-      token: string;
-      token_hash: string;
-      redirect_to: string;
-      email_action_type: string;
-      site_url: string;
-    };
-  };
+  if (!verifyHook(request, rawBody, hookSecret)) {
+    console.error("[send-email] Hook signature verification failed");
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
+  let json: unknown;
   try {
-    payload = JSON.parse(rawBody);
+    json = JSON.parse(rawBody);
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { user, email_data } = payload;
-  const { email } = user;
-  const { token_hash, redirect_to, email_action_type, site_url } = email_data;
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? site_url;
-  const verifyType = VERIFY_TYPE[email_action_type];
-
-  if (!verifyType) {
-    console.warn(`[send-email] Unknown email_action_type: ${email_action_type}`);
-    return NextResponse.json({});
+  const parsed = HookPayload.safeParse(json);
+  if (!parsed.success) {
+    console.error("[send-email] Invalid payload:", parsed.error.flatten());
+    return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
-  const confirmationUrl =
-    `${supabaseUrl}/auth/v1/verify` +
-    `?token=${token_hash}` +
-    `&type=${verifyType}` +
-    `&redirect_to=${encodeURIComponent(redirect_to)}`;
-
-  // ── Build HTML ─────────────────────────────────────────────────────────────
-  const props = { email, confirmationUrl };
-  let html: string;
-
-  switch (email_action_type) {
-    case "magic_link":
-      html = magicLinkEmail(props);
-      break;
-    case "signup":
-      html = confirmEmail(props);
-      break;
-    case "invite":
-      html = inviteEmail(props);
-      break;
-    case "recovery":
-      html = passwordResetEmail(props);
-      break;
-    default:
-      html = confirmEmail(props);
-  }
-
-  // ── Send via Gmail SMTP ────────────────────────────────────────────────────
-  const gmailUser = process.env.GMAIL_USER;
-  if (!gmailUser || !process.env.GMAIL_APP_PASSWORD) {
-    console.error("[send-email] GMAIL_USER or GMAIL_APP_PASSWORD is not set");
-    return NextResponse.json({ error: "Email service not configured" }, { status: 500 });
-  }
-
-  const subject = SUBJECTS[email_action_type] ?? "Advantage Portal";
-  const from = `"Advantage Portal" <${gmailUser}>`;
+  const payload = parsed.data;
+  const actionType = payload.email_data.email_action_type;
 
   try {
-    const transporter = createTransport();
-    await transporter.sendMail({ from, to: email, subject, html });
+    if (actionType === "email_change" || actionType.startsWith("email_change_")) {
+      const newEmail = normalizeEmailAddress(payload.user.new_email);
+      const currentEmail = normalizeEmailAddress(payload.user.email);
+      const currentTokenHash = payload.email_data.token_hash_new;
+      const newTokenHash = payload.email_data.token_hash;
+
+      if (currentEmail && currentTokenHash) {
+        await sendHookEmail(payload, currentEmail, currentTokenHash);
+      }
+      if (newEmail && newTokenHash && newEmail !== currentEmail) {
+        await sendHookEmail(payload, newEmail, newTokenHash);
+      }
+    } else {
+      await sendHookEmail(
+        payload,
+        payload.user.email,
+        payload.email_data.token_hash
+      );
+    }
   } catch (err) {
-    console.error("[send-email] Gmail SMTP error:", err);
+    console.error("[send-email] Email send failed:", err);
     return NextResponse.json({ error: "Failed to send email" }, { status: 500 });
   }
 

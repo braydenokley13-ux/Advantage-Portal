@@ -45,6 +45,11 @@ SUPABASE_DB_URL=postgresql://postgres:<password>@db.your-project-ref.supabase.co
 
 # App-level
 NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# Email delivery for auth links and notification test emails
+GMAIL_USER=yourname@gmail.com
+GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx
+SUPABASE_AUTH_HOOK_SECRET=v1,whsec_placeholder
 ```
 
 | Variable | Where used | Public? |
@@ -55,6 +60,8 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 | `SUPABASE_SERVICE_ROLE_KEY` | server / edge functions only | NO |
 | `SUPABASE_DB_URL` | migrations + cron | NO |
 | `NEXT_PUBLIC_APP_URL` | redirect URLs in auth flows | yes |
+| `GMAIL_USER` / `GMAIL_APP_PASSWORD` | SMTP email delivery | NO |
+| `SUPABASE_AUTH_HOOK_SECRET` | verifies Supabase Send Email hook calls | NO |
 
 For Vercel / Netlify / Render: add the same variables in the project's
 environment settings. Mirror the public/private split exactly, and set
@@ -101,6 +108,19 @@ npx supabase link --project-ref your-project-ref
    - `http://localhost:3000/auth/callback` (dev)
    - `https://your-domain.com/auth/callback` (prod)
    Add both in **Authentication → URL Configuration → Redirect URLs**.
+
+The app sends auth emails through its own routes:
+
+- `/api/auth/magic-link` creates and emails one-time magic links.
+- `/api/auth/signup` creates the Supabase signup link and emails it.
+- `/api/auth/password-reset` creates a recovery link that lands on
+  `/auth/update-password`.
+- `/api/auth/send-email` is the Supabase Send Email hook endpoint for
+  Supabase-generated auth emails.
+
+Set **Authentication → Hooks → Send Email** to
+`https://<your-domain>/api/auth/send-email`, generate a hook secret, and
+copy the full `v1,whsec_...` value into `SUPABASE_AUTH_HOOK_SECRET`.
 
 ### 4c. Invite flow assumptions
 
