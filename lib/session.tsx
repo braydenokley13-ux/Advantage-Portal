@@ -212,18 +212,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithMagicLink = useCallback(
     async (email: string, next?: string): Promise<AuthResult> => {
-      const sb = getSupabaseBrowserClient();
-      if (!sb) return { error: "Supabase is not configured." };
-      const appUrl =
-        process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
-      const redirect = next
-        ? `${appUrl}/auth/callback?next=${encodeURIComponent(next)}`
-        : `${appUrl}/auth/callback`;
-      const { error } = await sb.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: redirect },
+      // Handled server-side so Supabase's email rate limits never apply.
+      const res = await fetch("/api/auth/magic-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, next }),
       });
-      return error ? { error: error.message } : {};
+      const json = await res.json();
+      return json.error ? { error: json.error } : {};
     },
     []
   );
@@ -234,21 +230,15 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       email: string,
       password: string
     ): Promise<AuthResult> => {
-      const sb = getSupabaseBrowserClient();
-      if (!sb) return { error: "Supabase is not configured." };
-      const appUrl =
-        process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
-      const { data, error } = await sb.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { name },
-          emailRedirectTo: `${appUrl}/auth/callback`,
-        },
+      // Handled server-side so Supabase's email rate limits never apply.
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password }),
       });
-      if (error) return { error: error.message };
-      // No session in the response means email confirmation is required.
-      return { needsConfirmation: !data.session };
+      const json = await res.json();
+      if (json.error) return { error: json.error };
+      return { needsConfirmation: true };
     },
     []
   );
