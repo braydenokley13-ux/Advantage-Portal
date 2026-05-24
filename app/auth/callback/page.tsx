@@ -2,14 +2,23 @@
 
 import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { createBrowserClient } from "@supabase/ssr";
+import { resolveDataMode } from "@/lib/supabase/env";
+
+// Always create a fresh client here so it reads the current URL hash.
+// The singleton in browser.ts may have been cached before the hash existed.
+function makeFreshClient() {
+  const resolved = resolveDataMode();
+  if (resolved.mode !== "supabase" || !resolved.config) return null;
+  return createBrowserClient(resolved.config.url, resolved.config.anonKey);
+}
 
 function CallbackHandler() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    const supabase = getSupabaseBrowserClient();
+    const supabase = makeFreshClient();
     if (!supabase) {
       router.replace("/login?error=auth_callback_failed");
       return;
@@ -18,33 +27,29 @@ function CallbackHandler() {
     const next = searchParams.get("next") ?? "/dashboard";
     const code = searchParams.get("code");
 
+    // ── PKCE flow (code param) ─────────────────────────────────────────────
     if (code) {
-      // PKCE flow — exchange the code for a session
       supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
         router.replace(error ? "/login?error=auth_callback_failed" : next);
       });
       return;
     }
 
-    // Implicit flow — tokens arrive as a URL hash fragment (#access_token=...).
-    // The Supabase browser client automatically reads and stores the session
-    // from the hash when getSession() is called. Retry a few times since the
-    // client may need a tick to process the fragment.
-    if (window.location.hash.includes("access_token")) {
-      let attempts = 0;
-      const poll = () => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-          if (session) {
-            router.replace(next);
-          } else if (attempts++ < 8) {
-            setTimeout(poll, 250);
-          } else {
-            router.replace("/login?error=auth_callback_failed");
-          }
+    // ── Implicit flow (tokens in URL hash) ────────────────────────────────
+    // Parse access_token + refresh_token from the fragment and set the session
+    // directly — more reliable than waiting for the client to auto-detect.
+    const hash = window.location.hash.slice(1);
+    if (hash.includes("access_token")) {
+      const params = new URLSearchParams(hash);
+      const access_token = params.get("access_token");
+      const refresh_token = params.get("refresh_token");
+
+      if (access_token && refresh_token) {
+        supabase.auth.setSession({ access_token, refresh_token }).then(({ error }) => {
+          router.replace(error ? "/login?error=auth_callback_failed" : next);
         });
-      };
-      poll();
-      return;
+        return;
+      }
     }
 
     router.replace("/login?error=auth_callback_failed");
