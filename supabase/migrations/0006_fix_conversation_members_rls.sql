@@ -14,15 +14,17 @@
 -- which breaks the self-referential loop.
 create or replace function public.is_conversation_member(conv_id uuid)
 returns boolean
-language sql
+language plpgsql
 security definer
 set search_path = public
 as $$
-  select exists (
+begin
+  return exists (
     select 1 from public.conversation_members
     where conversation_id = conv_id
       and user_id = auth.uid()
   );
+end;
 $$;
 
 -- conversation_members: drop the recursive policy, replace with helper-based one.
