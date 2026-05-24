@@ -20,6 +20,11 @@ import {
   passwordResetEmail,
 } from "@/emails/templates";
 
+// Health check — lets you confirm the endpoint is reachable before wiring up Supabase.
+export function GET() {
+  return Response.json({ ok: true, endpoint: "send-email hook" });
+}
+
 // Supabase signs hook requests with a JWT (HS256) in Authorization: Bearer <jwt>.
 function verifyHookJWT(authHeader: string | null, secret: string): boolean {
   if (!authHeader?.startsWith("Bearer ")) return false;
