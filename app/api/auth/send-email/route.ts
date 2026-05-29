@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { z } from "zod";
+import { authTokenCallbackUrlFromRedirect } from "@/lib/auth/redirects";
 import { normalizeEmailAddress, sendEmail } from "@/lib/email/mailer";
 import { getSupabaseProjectUrl } from "@/lib/supabase/admin";
 import {
@@ -154,6 +155,13 @@ function buildConfirmationUrl(
   redirectTo: string
 ) {
   const verifyType = VERIFY_TYPE[actionType];
+  const directAppUrl = authTokenCallbackUrlFromRedirect(
+    redirectTo,
+    tokenHash,
+    verifyType
+  );
+  if (directAppUrl) return directAppUrl;
+
   const url = new URL("/auth/v1/verify", supabaseUrl);
   url.searchParams.set("token", tokenHash);
   url.searchParams.set("type", verifyType);

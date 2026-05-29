@@ -3,7 +3,7 @@
 import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
-import { safeNextPath } from "@/lib/auth/redirects";
+import { normalizeEmailOtpType, safeNextPath } from "@/lib/auth/redirects";
 import { resolveDataMode } from "@/lib/supabase/env";
 
 // Always create a fresh client here so it reads the current URL hash.
@@ -20,51 +20,95 @@ function CallbackHandler() {
 
   useEffect(() => {
     const supabase = makeFreshClient();
-    if (!supabase) {
-      router.replace("/login?error=auth_callback_failed");
-      return;
-    }
-
     const next = safeNextPath(searchParams.get("next"), "/dashboard");
-    const code = searchParams.get("code");
-    const queryError = searchParams.get("error_description") ?? searchParams.get("error");
+    let active = true;
 
-    if (queryError) {
-      router.replace("/login?error=auth_callback_failed");
-      return;
+    function loginPath(error: string) {
+      const url = new URL("/login", window.location.origin);
+      url.searchParams.set("error", error);
+      if (next !== "/dashboard") url.searchParams.set("next", next);
+      return `${url.pathname}${url.search}`;
     }
 
-    // ── PKCE flow (code param) ─────────────────────────────────────────────
-    if (code) {
-      supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
-        router.replace(error ? "/login?error=auth_callback_failed" : next);
-      });
-      return;
+    function errorCode(value: unknown) {
+      const message =
+        value instanceof Error
+          ? value.message
+          : typeof value === "string"
+            ? value
+            : "";
+      return /expired|invalid|otp|token|code|verifier|link/i.test(message)
+        ? "auth_link_invalid"
+        : "auth_callback_failed";
     }
 
-    // ── Implicit flow (tokens in URL hash) ────────────────────────────────
-    // Parse access_token + refresh_token from the fragment and set the session
-    // directly — more reliable than waiting for the client to auto-detect.
-    const hash = window.location.hash.slice(1);
-    if (hash.includes("error")) {
-      router.replace("/login?error=auth_callback_failed");
-      return;
-    }
-
-    if (hash.includes("access_token")) {
-      const params = new URLSearchParams(hash);
-      const access_token = params.get("access_token");
-      const refresh_token = params.get("refresh_token");
-
-      if (access_token && refresh_token) {
-        supabase.auth.setSession({ access_token, refresh_token }).then(({ error }) => {
-          router.replace(error ? "/login?error=auth_callback_failed" : next);
-        });
+    async function completeAuth() {
+      if (!supabase) {
+        router.replace(loginPath("auth_not_configured"));
         return;
       }
+
+      const queryError =
+        searchParams.get("error_description") ?? searchParams.get("error");
+      if (queryError) {
+        router.replace(loginPath(errorCode(queryError)));
+        return;
+      }
+
+      const tokenHash = searchParams.get("token_hash");
+      const tokenType = normalizeEmailOtpType(searchParams.get("type"));
+
+      if (tokenHash || searchParams.get("type")) {
+        if (!tokenHash || !tokenType) {
+          router.replace(loginPath("auth_link_incomplete"));
+          return;
+        }
+        const { error } = await supabase.auth.verifyOtp({
+          token_hash: tokenHash,
+          type: tokenType,
+        });
+        if (!active) return;
+        router.replace(error ? loginPath(errorCode(error)) : next);
+        return;
+      }
+
+      const code = searchParams.get("code");
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (!active) return;
+        router.replace(error ? loginPath(errorCode(error)) : next);
+        return;
+      }
+
+      const hash = new URLSearchParams(window.location.hash.slice(1));
+      const hashError = hash.get("error_description") ?? hash.get("error");
+      if (hashError) {
+        router.replace(loginPath(errorCode(hashError)));
+        return;
+      }
+
+      const access_token = hash.get("access_token");
+      const refresh_token = hash.get("refresh_token");
+      if (access_token && refresh_token) {
+        const { error } = await supabase.auth.setSession({
+          access_token,
+          refresh_token,
+        });
+        if (!active) return;
+        router.replace(error ? loginPath(errorCode(error)) : next);
+        return;
+      }
+
+      router.replace(loginPath("auth_link_incomplete"));
     }
 
-    router.replace("/login?error=auth_callback_failed");
+    completeAuth().catch((err) => {
+      if (active) router.replace(loginPath(errorCode(err)));
+    });
+
+    return () => {
+      active = false;
+    };
   }, [router, searchParams]);
 
   return (

@@ -21,6 +21,22 @@ const ROLE_TONE: Record<Role, "default" | "secondary" | "warning" | "danger"> = 
   admin: "danger",
 };
 
+const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  auth_link_invalid:
+    "That email link is invalid, expired, or already used. Request a new link and open the newest email.",
+  auth_link_incomplete:
+    "That email link is missing the information needed to sign you in. Request a new link and open the newest email.",
+  auth_not_configured:
+    "Supabase auth is not configured for this app environment.",
+  auth_callback_failed:
+    "We could not finish signing you in. Try again with your password or request a new email link.",
+};
+
+function authErrorMessage(code: string | null) {
+  if (!code) return null;
+  return AUTH_ERROR_MESSAGES[code] ?? AUTH_ERROR_MESSAGES.auth_callback_failed;
+}
+
 export default function LoginPage() {
   return (
     <Suspense fallback={<LoginShell>Loading…</LoginShell>}>
@@ -119,8 +135,8 @@ function SupabaseLogin({ next }: { next: string }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(
-    search.get("error") ? "Sign-in link was invalid or expired. Try again." : null
+  const [error, setError] = useState<string | null>(() =>
+    authErrorMessage(search.get("error"))
   );
   const [notice, setNotice] = useState<"magic" | "confirm" | "reset" | null>(
     null
@@ -241,7 +257,10 @@ function SupabaseLogin({ next }: { next: string }) {
                 autoComplete="name"
                 required
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setError(null);
+                }}
                 placeholder="Alex Rivera"
               />
             </div>
@@ -255,7 +274,10 @@ function SupabaseLogin({ next }: { next: string }) {
               autoComplete="email"
               required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setError(null);
+              }}
               placeholder="you@advantage.org"
             />
           </div>
@@ -285,7 +307,10 @@ function SupabaseLogin({ next }: { next: string }) {
                 required
                 minLength={isSignup ? 6 : undefined}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setError(null);
+                }}
                 placeholder="••••••••"
               />
               {isSignup && (
