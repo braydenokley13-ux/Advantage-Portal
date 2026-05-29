@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { authCallbackUrl } from "@/lib/auth/redirects";
+import { authCallbackUrl, authTokenCallbackUrl } from "@/lib/auth/redirects";
 import { normalizeEmailAddress, sendEmail } from "@/lib/email/mailer";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { magicLinkEmail } from "@/emails/templates";
@@ -58,7 +58,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const confirmationUrl = data.properties.action_link;
+    const confirmationUrl =
+      authTokenCallbackUrl(
+        req,
+        data.properties.hashed_token,
+        data.properties.verification_type,
+        parsed.data.next
+      ) ?? data.properties.action_link;
     if (!confirmationUrl) {
       return NextResponse.json(
         { error: "Supabase did not return a sign-in link." },

@@ -2,6 +2,23 @@ import type { NextRequest } from "next/server";
 
 const DEFAULT_APP_ORIGIN = "http://localhost:3000";
 
+export type AuthEmailOtpType =
+  | "signup"
+  | "invite"
+  | "magiclink"
+  | "recovery"
+  | "email_change"
+  | "email";
+
+const EMAIL_OTP_TYPES = new Set<AuthEmailOtpType>([
+  "signup",
+  "invite",
+  "magiclink",
+  "recovery",
+  "email_change",
+  "email",
+]);
+
 function clean(raw: string | undefined): string | undefined {
   if (typeof raw !== "string") return undefined;
   const cleaned = raw
@@ -62,4 +79,63 @@ export function authCallbackUrl(
   const safeNext = safeNextPath(next, "/dashboard");
   if (safeNext !== "/dashboard") url.searchParams.set("next", safeNext);
   return url.toString();
+}
+
+export function normalizeEmailOtpType(
+  value: string | null | undefined
+): AuthEmailOtpType | null {
+  if (!value) return null;
+  const normal = value.trim().toLowerCase();
+  if (normal === "magic_link") return "magiclink";
+  if (normal === "email_change_current" || normal === "email_change_new") {
+    return "email_change";
+  }
+  return EMAIL_OTP_TYPES.has(normal as AuthEmailOtpType)
+    ? (normal as AuthEmailOtpType)
+    : null;
+}
+
+export function authTokenCallbackUrlFromRedirect(
+  redirectTo: string,
+  tokenHash: string | null | undefined,
+  type: string | null | undefined
+): string | null {
+  const cleanToken = tokenHash?.trim();
+  const otpType = normalizeEmailOtpType(type);
+  if (!cleanToken || !otpType) return null;
+
+  try {
+    const requested = new URL(redirectTo);
+    const url =
+      requested.pathname === "/auth/callback"
+        ? requested
+        : new URL("/auth/callback", requested.origin);
+
+    if (requested.pathname !== "/auth/callback") {
+      const next = safeNextPath(
+        `${requested.pathname}${requested.search}`,
+        "/dashboard"
+      );
+      if (next !== "/dashboard") url.searchParams.set("next", next);
+    }
+
+    url.searchParams.set("token_hash", cleanToken);
+    url.searchParams.set("type", otpType);
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+export function authTokenCallbackUrl(
+  request: NextRequest,
+  tokenHash: string | null | undefined,
+  type: string | null | undefined,
+  next?: string | null
+): string | null {
+  return authTokenCallbackUrlFromRedirect(
+    authCallbackUrl(request, next),
+    tokenHash,
+    type
+  );
 }

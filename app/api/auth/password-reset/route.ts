@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { authCallbackUrl } from "@/lib/auth/redirects";
+import { authCallbackUrl, authTokenCallbackUrl } from "@/lib/auth/redirects";
 import { normalizeEmailAddress, sendEmail } from "@/lib/email/mailer";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { passwordResetEmail } from "@/emails/templates";
@@ -39,11 +39,12 @@ export async function POST(req: NextRequest) {
 
   try {
     const admin = getSupabaseAdminClient();
+    const next = "/auth/update-password";
     const { data, error } = await admin.auth.admin.generateLink({
       type: "recovery",
       email,
       options: {
-        redirectTo: authCallbackUrl(req, "/auth/update-password"),
+        redirectTo: authCallbackUrl(req, next),
       },
     });
 
@@ -54,7 +55,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    const confirmationUrl = data.properties.action_link;
+    const confirmationUrl =
+      authTokenCallbackUrl(
+        req,
+        data.properties.hashed_token,
+        data.properties.verification_type,
+        next
+      ) ?? data.properties.action_link;
     if (!confirmationUrl) {
       return NextResponse.json(
         { error: "Supabase did not return a reset link." },
