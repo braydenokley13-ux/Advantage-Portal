@@ -114,7 +114,7 @@ function SupabaseLogin({ next }: { next: string }) {
   const search = useSearchParams();
   const session = useSession();
 
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [mode, setMode] = useState<"signin" | "signup" | "reset">("signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -122,13 +122,17 @@ function SupabaseLogin({ next }: { next: string }) {
   const [error, setError] = useState<string | null>(
     search.get("error") ? "Sign-in link was invalid or expired. Try again." : null
   );
-  const [notice, setNotice] = useState<"magic" | "confirm" | null>(null);
+  const [notice, setNotice] = useState<"magic" | "confirm" | "reset" | null>(
+    null
+  );
 
   const isSignup = mode === "signup";
+  const isReset = mode === "reset";
 
   function switchMode(nextMode: "signin" | "signup") {
     setMode(nextMode);
     setError(null);
+    setNotice(null);
     setPassword("");
   }
 
@@ -136,7 +140,12 @@ function SupabaseLogin({ next }: { next: string }) {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    if (isSignup) {
+    if (isReset) {
+      const res = await session.sendPasswordReset(email.trim());
+      setBusy(false);
+      if (res.error) setError(res.error);
+      else setNotice("reset");
+    } else if (isSignup) {
       const res = await session.signUp(name.trim(), email.trim(), password);
       setBusy(false);
       if (res.error) setError(res.error);
@@ -175,6 +184,11 @@ function SupabaseLogin({ next }: { next: string }) {
                 We sent a confirmation link to <strong>{email}</strong>. Open
                 it to activate your account, then come back and sign in.
               </>
+            ) : notice === "reset" ? (
+              <>
+                If an Advantage Portal account exists for{" "}
+                <strong>{email}</strong>, a password reset link is on its way.
+              </>
             ) : (
               <>
                 We sent a sign-in link to <strong>{email}</strong>. Open it on
@@ -190,23 +204,32 @@ function SupabaseLogin({ next }: { next: string }) {
   return (
     <Card>
       <CardContent className="p-5">
-        <div className="mb-5 grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
-          {(["signin", "signup"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => switchMode(m)}
-              className={cn(
-                "rounded-md py-1.5 text-sm font-medium transition-colors",
-                mode === m
-                  ? "bg-card text-foreground shadow-soft"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {m === "signin" ? "Sign in" : "Create account"}
-            </button>
-          ))}
-        </div>
+        {isReset ? (
+          <div className="mb-5 space-y-1 text-center">
+            <p className="text-sm font-medium">Reset your password</p>
+            <p className="text-xs text-muted-foreground">
+              Enter your email and we’ll send a secure reset link.
+            </p>
+          </div>
+        ) : (
+          <div className="mb-5 grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+            {(["signin", "signup"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => switchMode(m)}
+                className={cn(
+                  "rounded-md py-1.5 text-sm font-medium transition-colors",
+                  mode === m
+                    ? "bg-card text-foreground shadow-soft"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {m === "signin" ? "Sign in" : "Create account"}
+              </button>
+            ))}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {isSignup && (
@@ -237,24 +260,41 @@ function SupabaseLogin({ next }: { next: string }) {
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              autoComplete={isSignup ? "new-password" : "current-password"}
-              required
-              minLength={isSignup ? 6 : undefined}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-            />
-            {isSignup && (
-              <p className="text-[11px] text-muted-foreground">
-                Use at least 6 characters.
-              </p>
-            )}
-          </div>
+          {!isReset && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor="password">Password</Label>
+                {!isSignup && (
+                  <button
+                    type="button"
+                    className="text-[11px] font-medium text-primary hover:underline"
+                    onClick={() => {
+                      setMode("reset");
+                      setError(null);
+                      setPassword("");
+                    }}
+                  >
+                    Forgot password?
+                  </button>
+                )}
+              </div>
+              <Input
+                id="password"
+                type="password"
+                autoComplete={isSignup ? "new-password" : "current-password"}
+                required
+                minLength={isSignup ? 6 : undefined}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+              />
+              {isSignup && (
+                <p className="text-[11px] text-muted-foreground">
+                  Use at least 6 characters.
+                </p>
+              )}
+            </div>
+          )}
 
           {error && (
             <p className="text-sm text-destructive" role="alert">
@@ -266,14 +306,30 @@ function SupabaseLogin({ next }: { next: string }) {
             {busy
               ? isSignup
                 ? "Creating account…"
-                : "Signing in…"
+                : isReset
+                  ? "Sending reset link…"
+                  : "Signing in…"
               : isSignup
                 ? "Create account"
+                : isReset
+                  ? "Send reset link"
                 : "Sign in"}
           </Button>
         </form>
 
-        {!isSignup && (
+        {isReset && (
+          <Button
+            type="button"
+            variant="ghost"
+            className="mt-3 w-full"
+            disabled={busy}
+            onClick={() => switchMode("signin")}
+          >
+            Back to sign in
+          </Button>
+        )}
+
+        {!isSignup && !isReset && (
           <>
             <div className="my-4 flex items-center gap-3 text-[11px] text-muted-foreground">
               <span className="h-px flex-1 bg-border" />

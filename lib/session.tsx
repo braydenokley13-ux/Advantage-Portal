@@ -48,6 +48,8 @@ type SessionValue = {
   signInWithPassword: (email: string, password: string) => Promise<AuthResult>;
   /** Supabase-mode magic-link (email OTP) sign-in. */
   signInWithMagicLink: (email: string, next?: string) => Promise<AuthResult>;
+  /** Supabase-mode password reset email. */
+  sendPasswordReset: (email: string) => Promise<AuthResult>;
   /** Supabase-mode self-service sign-up (open registration). */
   signUp: (name: string, email: string, password: string) => Promise<AuthResult>;
   /** Supabase-mode: update the signed-in user's own display name + avatar. */
@@ -63,6 +65,25 @@ const SessionContext = createContext<SessionValue | null>(null);
 const STORAGE_KEY = "advantage-portal:session";
 /** Default demo-user when no persisted session exists. */
 const DEFAULT_DEMO_USER_ID = "u6"; // leader
+
+async function readAuthResponse(res: Response): Promise<AuthResult> {
+  let json: { error?: string } = {};
+  try {
+    json = await res.json();
+  } catch {
+    // Leave json empty; the status check below will produce the fallback.
+  }
+
+  if (!res.ok || json.error) {
+    return {
+      error:
+        json.error ??
+        "That email request did not finish. Check your connection and try again.",
+    };
+  }
+
+  return {};
+}
 
 function readPersisted(): SessionState {
   if (typeof window === "undefined") return { userId: null, signedIn: false };
@@ -218,8 +239,19 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, next }),
       });
-      const json = await res.json();
-      return json.error ? { error: json.error } : {};
+      return readAuthResponse(res);
+    },
+    []
+  );
+
+  const sendPasswordReset = useCallback(
+    async (email: string): Promise<AuthResult> => {
+      const res = await fetch("/api/auth/password-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      return readAuthResponse(res);
     },
     []
   );
@@ -236,8 +268,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, password }),
       });
-      const json = await res.json();
-      if (json.error) return { error: json.error };
+      const result = await readAuthResponse(res);
+      if (result.error) return result;
       return { needsConfirmation: true };
     },
     []
@@ -293,6 +325,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         signInAsDemoUser,
         signInWithPassword,
         signInWithMagicLink,
+        sendPasswordReset,
         signUp,
         updateProfile,
         signOut,
@@ -312,6 +345,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       signInAsDemoUser,
       signInWithPassword,
       signInWithMagicLink,
+      sendPasswordReset,
       signUp,
       updateProfile,
       signOut,
@@ -326,6 +360,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     signInAsDemoUser,
     signInWithPassword,
     signInWithMagicLink,
+    sendPasswordReset,
     signUp,
     updateProfile,
     signOut,

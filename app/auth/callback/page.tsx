@@ -3,6 +3,7 @@
 import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
+import { safeNextPath } from "@/lib/auth/redirects";
 import { resolveDataMode } from "@/lib/supabase/env";
 
 // Always create a fresh client here so it reads the current URL hash.
@@ -24,8 +25,14 @@ function CallbackHandler() {
       return;
     }
 
-    const next = searchParams.get("next") ?? "/dashboard";
+    const next = safeNextPath(searchParams.get("next"), "/dashboard");
     const code = searchParams.get("code");
+    const queryError = searchParams.get("error_description") ?? searchParams.get("error");
+
+    if (queryError) {
+      router.replace("/login?error=auth_callback_failed");
+      return;
+    }
 
     // ── PKCE flow (code param) ─────────────────────────────────────────────
     if (code) {
@@ -39,6 +46,11 @@ function CallbackHandler() {
     // Parse access_token + refresh_token from the fragment and set the session
     // directly — more reliable than waiting for the client to auto-detect.
     const hash = window.location.hash.slice(1);
+    if (hash.includes("error")) {
+      router.replace("/login?error=auth_callback_failed");
+      return;
+    }
+
     if (hash.includes("access_token")) {
       const params = new URLSearchParams(hash);
       const access_token = params.get("access_token");

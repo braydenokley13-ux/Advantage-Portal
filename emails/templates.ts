@@ -6,8 +6,30 @@ type EmailProps = {
   confirmationUrl: string;
 };
 
+type NotificationEmailProps = {
+  email: string;
+  title: string;
+  body?: string;
+  actionUrl?: string;
+  actionLabel?: string;
+  kindLabel?: string;
+};
+
 const BRAND_BG = "linear-gradient(135deg,#5b5bd6 0%,#7e7af0 100%)";
 const BRAND_COLOR = "#5b5bd6";
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function escapeAttr(value: string): string {
+  return escapeHtml(value).replace(/`/g, "&#96;");
+}
 
 function shell(body: string): string {
   return `<!DOCTYPE html>
@@ -54,9 +76,9 @@ function shell(body: string): string {
 function cta(url: string, label: string): string {
   return `<table cellpadding="0" cellspacing="0" style="margin:28px auto 0;"><tr>
     <td align="center" style="background:${BRAND_BG};border-radius:8px;">
-      <a href="${url}" target="_blank" rel="noopener noreferrer"
+      <a href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer"
          style="display:inline-block;padding:13px 32px;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;letter-spacing:0.1px;">
-        ${label}
+        ${escapeHtml(label)}
       </a>
     </td>
   </tr></table>`;
@@ -69,17 +91,18 @@ function expiry(label: string): string {
 function fallback(url: string): string {
   return `<p style="color:#6b7280;font-size:12px;text-align:center;margin:16px 0 0;line-height:1.6;">
     If the button doesn't work, paste this URL into your browser:<br/>
-    <a href="${url}" style="color:${BRAND_COLOR};word-break:break-all;">${url}</a>
+    <a href="${escapeAttr(url)}" style="color:${BRAND_COLOR};word-break:break-all;">${escapeHtml(url)}</a>
   </p>`;
 }
 
 // ─── Magic link ─────────────────────────────────────────────────────────────
 
 export function magicLinkEmail({ email, confirmationUrl }: EmailProps): string {
+  const safeEmail = escapeHtml(email);
   return shell(`
     <h1 style="margin:0 0 6px;font-size:22px;font-weight:700;color:#111827;text-align:center;">Your sign-in link</h1>
     <p style="color:#6b7280;font-size:14px;text-align:center;margin:0;">
-      Click below to sign in to Advantage Portal as&nbsp;<strong style="color:#374151;">${email}</strong>
+      Click below to sign in to Advantage Portal as&nbsp;<strong style="color:#374151;">${safeEmail}</strong>
     </p>
     ${cta(confirmationUrl, "Sign in to Advantage Portal")}
     ${expiry("This link expires in 1 hour and can only be used once.")}
@@ -90,13 +113,14 @@ export function magicLinkEmail({ email, confirmationUrl }: EmailProps): string {
 // ─── Email confirmation (sign-up) ────────────────────────────────────────────
 
 export function confirmEmail({ email, confirmationUrl }: EmailProps): string {
+  const safeEmail = escapeHtml(email);
   return shell(`
     <h1 style="margin:0 0 6px;font-size:22px;font-weight:700;color:#111827;text-align:center;">Confirm your account</h1>
     <p style="color:#6b7280;font-size:14px;text-align:center;margin:0;">
       Welcome to Advantage Portal! Confirm your email address to activate your account.
     </p>
     <p style="color:#9ca3af;font-size:13px;text-align:center;margin:8px 0 0;">
-      Confirming&nbsp;<strong style="color:#374151;">${email}</strong>
+      Confirming&nbsp;<strong style="color:#374151;">${safeEmail}</strong>
     </p>
     ${cta(confirmationUrl, "Confirm my account")}
     ${expiry("This link expires in 24 hours.")}
@@ -107,13 +131,14 @@ export function confirmEmail({ email, confirmationUrl }: EmailProps): string {
 // ─── Invite ──────────────────────────────────────────────────────────────────
 
 export function inviteEmail({ email, confirmationUrl }: EmailProps): string {
+  const safeEmail = escapeHtml(email);
   return shell(`
     <h1 style="margin:0 0 6px;font-size:22px;font-weight:700;color:#111827;text-align:center;">You've been invited</h1>
     <p style="color:#6b7280;font-size:14px;text-align:center;margin:0;">
       You've been invited to join the Advantage Portal workspace. Accept the invitation to set up your account.
     </p>
     <p style="color:#9ca3af;font-size:13px;text-align:center;margin:8px 0 0;">
-      Invitation for&nbsp;<strong style="color:#374151;">${email}</strong>
+      Invitation for&nbsp;<strong style="color:#374151;">${safeEmail}</strong>
     </p>
     ${cta(confirmationUrl, "Accept invitation")}
     ${expiry("This invitation expires in 7 days.")}
@@ -124,16 +149,49 @@ export function inviteEmail({ email, confirmationUrl }: EmailProps): string {
 // ─── Password reset ──────────────────────────────────────────────────────────
 
 export function passwordResetEmail({ email, confirmationUrl }: EmailProps): string {
+  const safeEmail = escapeHtml(email);
   return shell(`
     <h1 style="margin:0 0 6px;font-size:22px;font-weight:700;color:#111827;text-align:center;">Reset your password</h1>
     <p style="color:#6b7280;font-size:14px;text-align:center;margin:0;">
       We received a request to reset the password for your Advantage Portal account.
     </p>
     <p style="color:#9ca3af;font-size:13px;text-align:center;margin:8px 0 0;">
-      Account:&nbsp;<strong style="color:#374151;">${email}</strong>
+      Account:&nbsp;<strong style="color:#374151;">${safeEmail}</strong>
     </p>
     ${cta(confirmationUrl, "Reset my password")}
     ${expiry("This link expires in 1 hour.")}
     ${fallback(confirmationUrl)}
+  `);
+}
+
+// ─── Product notification / test email ─────────────────────────────────────
+
+export function notificationEmail({
+  email,
+  title,
+  body,
+  actionUrl,
+  actionLabel = "Open Advantage Portal",
+  kindLabel = "Portal notification",
+}: NotificationEmailProps): string {
+  const safeEmail = escapeHtml(email);
+  const safeTitle = escapeHtml(title);
+  const safeKind = escapeHtml(kindLabel);
+  const safeBody = body
+    ? `<p style="color:#4b5563;font-size:14px;line-height:1.7;text-align:center;margin:16px 0 0;">${escapeHtml(body)}</p>`
+    : "";
+
+  return shell(`
+    <p style="color:${BRAND_COLOR};font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;text-align:center;margin:0 0 10px;">${safeKind}</p>
+    <h1 style="margin:0 0 6px;font-size:22px;font-weight:700;color:#111827;text-align:center;">${safeTitle}</h1>
+    ${safeBody}
+    ${
+      actionUrl
+        ? `${cta(actionUrl, actionLabel)}${fallback(actionUrl)}`
+        : ""
+    }
+    <p style="color:#9ca3af;font-size:12px;text-align:center;margin:18px 0 0;">
+      Sent to&nbsp;<strong style="color:#6b7280;">${safeEmail}</strong>
+    </p>
   `);
 }
