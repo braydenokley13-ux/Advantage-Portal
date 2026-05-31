@@ -20,6 +20,8 @@ import { useVisibleTasks } from "@/lib/hooks";
 import type { Task } from "@/lib/types";
 import { isPast } from "date-fns";
 
+const EMPTY_TASKS: Task[] = [];
+
 /**
  * Editor "Reviews" queue — surfaces work waiting on a review decision,
  * resubmissions after changes were requested, and items overdue for review.
@@ -30,7 +32,7 @@ export default function ReviewsPage() {
   const { role } = useRole();
   const { data } = useVisibleTasks();
   const { reviews } = useStore();
-  const tasks = data ?? [];
+  const tasks = data ?? EMPTY_TASKS;
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
   const groups = useMemo(() => {

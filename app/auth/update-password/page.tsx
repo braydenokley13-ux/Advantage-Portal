@@ -10,27 +10,25 @@ import { Label } from "@/components/ui/label";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 function UpdatePasswordInner() {
+  const configured = !!getSupabaseBrowserClient();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(!configured);
   const [hasSession, setHasSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
+    if (!configured) return;
     const supabase = getSupabaseBrowserClient();
-    if (!supabase) {
-      setReady(true);
-      setHasSession(false);
-      return;
-    }
+    if (!supabase) return;
 
     supabase.auth.getSession().then(({ data }) => {
       setHasSession(!!data.session);
       setReady(true);
     });
-  }, []);
+  }, [configured]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

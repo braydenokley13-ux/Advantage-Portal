@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, Mail } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,40 +35,42 @@ function defaultPrefs(): Prefs {
 
 const STORAGE_KEY = "advantage-portal:notif-prefs";
 
+function readPrefs(key: string): Prefs {
+  if (typeof window === "undefined") return defaultPrefs();
+  const saved = window.localStorage.getItem(key);
+  if (!saved) return defaultPrefs();
+  try {
+    return { ...defaultPrefs(), ...JSON.parse(saved) };
+  } catch {
+    return defaultPrefs();
+  }
+}
+
 export default function NotificationPreferencesPage() {
   const { user } = useRole();
   const session = useSession();
   const key = `${STORAGE_KEY}:${user.id}`;
-  const [prefs, setPrefs] = useState<Prefs>(defaultPrefs());
+  const [prefsState, setPrefsState] = useState<{
+    key: string;
+    prefs: Prefs;
+  }>(() => ({ key, prefs: readPrefs(key) }));
   const [testStatus, setTestStatus] = useState<
     "idle" | "sending" | "sent" | "error"
   >("idle");
   const [testError, setTestError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const saved = window.localStorage.getItem(key);
-    if (saved) {
-      try {
-        setPrefs({ ...defaultPrefs(), ...JSON.parse(saved) });
-      } catch {
-        setPrefs(defaultPrefs());
-      }
-    } else {
-      setPrefs(defaultPrefs());
-    }
-  }, [key]);
+  const prefs = prefsState.key === key ? prefsState.prefs : readPrefs(key);
 
   function update(kind: NotificationKind, channel: Channel, value: boolean) {
-    setPrefs((p) => {
+    setPrefsState((state) => {
+      const current = state.key === key ? state.prefs : readPrefs(key);
       const next: Prefs = {
-        ...p,
-        [kind]: { ...p[kind], [channel]: value },
+        ...current,
+        [kind]: { ...current[kind], [channel]: value },
       };
       if (typeof window !== "undefined") {
         window.localStorage.setItem(key, JSON.stringify(next));
       }
-      return next;
+      return { key, prefs: next };
     });
   }
 
@@ -215,7 +217,7 @@ export default function NotificationPreferencesPage() {
       <div className="rounded-lg border border-border bg-secondary/40 p-4 space-y-1">
         <p className="text-xs font-medium">How we keep this quiet</p>
         <p className="text-xs text-muted-foreground leading-relaxed">
-          Identical alerts are deduped within a short window so you don't get
+          Identical alerts are deduped within a short window so you don&apos;t get
           pinged three times for the same thing across in-app, push, and email.
           You can mute any event type per channel above. Preferences are stored
           locally for this demo session.

@@ -69,7 +69,8 @@ export function canEditTask(role: Role) {
 }
 
 /** View user list. Everyone with an account can see the team page. */
-export function canViewTeam(_role: Role) {
+export function canViewTeam(role: Role) {
+  void role;
   return true;
 }
 

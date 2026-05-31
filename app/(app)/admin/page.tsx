@@ -34,25 +34,6 @@ export default function AdminPage() {
   const { role } = useRole();
   const { users, tasks, notifications } = useStore();
 
-  if (!canManageUsers(role)) {
-    return (
-      <div className="container py-12 max-w-md">
-        <Card>
-          <CardContent className="p-8 text-center">
-            <div className="mx-auto h-10 w-10 rounded-full bg-secondary flex items-center justify-center mb-3">
-              <Lock className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <p className="text-sm font-semibold">Admin access required</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Only admins can change roles or manage user accounts. The
-              Team page has the read-only directory.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   const active = users.filter((u) => u.active !== false).length;
   const deactivated = users.length - active;
   const admins = users.filter((u) => u.role === "admin").length;
@@ -74,6 +55,25 @@ export default function AdminPage() {
     [notifications, users]
   );
 
+  if (!canManageUsers(role)) {
+    return (
+      <div className="container py-12 max-w-md">
+        <Card>
+          <CardContent className="p-8 text-center">
+            <div className="mx-auto h-10 w-10 rounded-full bg-secondary flex items-center justify-center mb-3">
+              <Lock className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <p className="text-sm font-semibold">Admin access required</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Only admins can change roles or manage user accounts. The
+              Team page has the read-only directory.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="container py-6 md:py-8 space-y-6">
       <PageHeader
@@ -90,7 +90,7 @@ export default function AdminPage() {
           </div>
           <div className="text-xs text-muted-foreground leading-relaxed">
             <p className="text-foreground font-medium">
-              Admin vs Team — what's the difference?
+              Admin vs Team — what&apos;s the difference?
             </p>
             <p className="mt-0.5">
               Team is the read-only directory everyone can browse. Admin is
@@ -131,7 +131,7 @@ export default function AdminPage() {
             <Users className="h-4 w-4 text-muted-foreground" /> User management
           </CardTitle>
           <p className="text-xs text-muted-foreground mt-1">
-            Change a user's role or deactivate their account. Deactivation
+            Change a user&apos;s role or deactivate their account. Deactivation
             ends their session immediately.
           </p>
         </CardHeader>
@@ -292,7 +292,7 @@ function PermissionsMatrix() {
         </CardTitle>
         <p className="text-xs text-muted-foreground mt-1">
           Reference matrix. Permissions are enforced server-side once the
-          backend is wired in; today they're enforced by the in-memory
+          backend is wired in; today they&apos;re enforced by the in-memory
           permission helpers.
         </p>
       </CardHeader>
