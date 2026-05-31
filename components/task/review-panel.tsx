@@ -230,7 +230,7 @@ export function ReviewPanel({
 
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
-          Reviewing {`v${submission.version}`} of "{task.title}".
+          Reviewing {`v${submission.version}`} of &quot;{task.title}&quot;.
         </p>
         <Button
           variant="gradient"

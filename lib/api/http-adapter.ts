@@ -31,8 +31,7 @@ export interface HttpAdapterConfig {
 export class HttpApiClient implements ApiClient {
   constructor(private readonly config: HttpAdapterConfig) {}
 
-  // Internal helpers — left typed but unused so they compile clean today.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // Internal helpers — left typed for the future HTTP endpoint wiring.
   private async request<T>(
     path: string,
     init: RequestInit,

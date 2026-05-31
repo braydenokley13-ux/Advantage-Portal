@@ -38,7 +38,7 @@ export default function BoardPage() {
           <p>
             Submission and review are gated. To move a task to{" "}
             <span className="font-medium text-foreground">Submitted</span>,
-            submit your work. Only an editor's review can move it to{" "}
+            submit your work. Only an editor&apos;s review can move it to{" "}
             <span className="font-medium text-foreground">Complete</span>.
           </p>
         </div>

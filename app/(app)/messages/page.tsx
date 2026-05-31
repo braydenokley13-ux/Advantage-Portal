@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Inbox } from "lucide-react";
 import { ConversationList } from "@/components/messages/conversation-list";
 import { ChatView } from "@/components/messages/chat-view";
@@ -18,12 +18,10 @@ export default function MessagesPage() {
     visible[0]?.id ?? null
   );
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
-
-  useEffect(() => {
-    if (selectedId && !visible.some((c) => c.id === selectedId)) {
-      setSelectedId(visible[0]?.id ?? null);
-    }
-  }, [selectedId, visible]);
+  const effectiveSelectedId =
+    selectedId && visible.some((c) => c.id === selectedId)
+      ? selectedId
+      : visible[0]?.id ?? null;
 
   function selectMobile(id: string) {
     setSelectedId(id);
@@ -39,7 +37,7 @@ export default function MessagesPage() {
         )}
       >
         <ConversationList
-          selectedId={selectedId}
+          selectedId={effectiveSelectedId}
           onSelect={(id) => {
             setSelectedId(id);
             selectMobile(id);
@@ -52,9 +50,9 @@ export default function MessagesPage() {
           mobileChatOpen ? "flex" : "hidden md:flex"
         )}
       >
-        {selectedId ? (
+        {effectiveSelectedId ? (
           <ChatView
-            conversationId={selectedId}
+            conversationId={effectiveSelectedId}
             onBack={() => setMobileChatOpen(false)}
           />
         ) : (

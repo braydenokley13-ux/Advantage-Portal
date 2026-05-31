@@ -135,7 +135,7 @@ export function EditorialChecklist({ task }: { task: Task }) {
       {!canToggle && (
         <p className="px-3 py-2 text-[11px] text-muted-foreground border-t border-border">
           Editors and leaders tick these as they go. Writers see progress
-          but don't toggle.
+          but don&apos;t toggle.
         </p>
       )}
     </div>

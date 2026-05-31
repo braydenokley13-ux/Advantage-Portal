@@ -337,6 +337,7 @@ export function ChatView({
       </div>
 
       <ReportDialog
+        key={reportTarget?.id ?? "no-report-target"}
         target={reportTarget}
         onClose={() => setReportTarget(null)}
         onSubmit={async ({ reason, note }) => {
@@ -376,15 +377,6 @@ function ReportDialog({
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
 
-  // Reset state when target changes.
-  useEffect(() => {
-    if (target) {
-      setReason("inappropriate_language");
-      setNote("");
-      setDone(false);
-    }
-  }, [target?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
   if (!target) return null;
 
   return (
@@ -394,7 +386,7 @@ function ReportDialog({
           <DialogTitle>Report message</DialogTitle>
           <DialogDescription className="text-xs">
             We take this seriously. Pick the closest reason and add details
-            if you'd like — an admin will review.
+            if you&apos;d like — an admin will review.
           </DialogDescription>
         </DialogHeader>
         {done ? (
@@ -404,7 +396,7 @@ function ReportDialog({
             </div>
             <p className="text-sm font-medium">Thanks — an admin will review this.</p>
             <p className="text-xs text-muted-foreground">
-              You won't see follow-up here, but action is taken privately.
+              You won&apos;t see follow-up here, but action is taken privately.
             </p>
             <Button variant="outline" size="sm" onClick={onClose}>
               Close
@@ -414,7 +406,7 @@ function ReportDialog({
           <div className="px-5 pb-5 space-y-3">
             <div className="rounded-md border border-border bg-secondary/40 p-3">
               <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
-                Message you're reporting
+                Message you&apos;re reporting
               </p>
               <p className="text-sm mt-1 line-clamp-3">{target.body}</p>
             </div>

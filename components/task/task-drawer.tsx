@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Calendar,
   CalendarPlus,
@@ -59,6 +59,8 @@ const STATUS_TONE: Record<
   complete: "success",
 };
 
+const EMPTY_TASKS: Task[] = [];
+
 export function TaskDrawer({
   taskId,
   open,
@@ -82,7 +84,7 @@ export function TaskDrawer({
     requestExtension,
     decideExtension,
   } = useStore();
-  const tasks = tasksData ?? [];
+  const tasks = tasksData ?? EMPTY_TASKS;
   const { user } = useRole();
   const [extOpen, setExtOpen] = useState(false);
   const [extDate, setExtDate] = useState("");
@@ -104,21 +106,33 @@ export function TaskDrawer({
   const current = taskSubmissions.find((s) => s.isCurrent) ?? taskSubmissions[0];
 
   const [selectedId, setSelectedId] = useState<string | undefined>(current?.id);
-  useEffect(() => {
-    setSelectedId(current?.id);
-  }, [current?.id, taskId]);
-
+  const effectiveSelectedId =
+    selectedId && taskSubmissions.some((s) => s.id === selectedId)
+      ? selectedId
+      : current?.id;
   const selected: Submission | undefined =
-    taskSubmissions.find((s) => s.id === selectedId) ?? current;
+    taskSubmissions.find((s) => s.id === effectiveSelectedId) ?? current;
 
-  const [tab, setTab] = useState("brief");
+  const [requestedTab, setRequestedTab] = useState<{
+    taskId: string;
+    value: string;
+  } | null>(null);
   const [editing, setEditing] = useState(false);
-  useEffect(() => {
-    if (!task) return;
-    if (canReview({ task, user })) setTab("review");
-    else if (canSubmit({ task, user })) setTab("submit");
-    else setTab("brief");
-  }, [task, user]);
+  const preferredTab = task
+    ? canReview({ task, user })
+      ? "review"
+      : canSubmit({ task, user })
+        ? "submit"
+        : "brief"
+    : "brief";
+  const tab =
+    requestedTab && requestedTab.taskId === task?.id
+      ? requestedTab.value
+      : preferredTab;
+
+  // Pull the checklist for this single task through the API hook so the
+  // stage derivation reflects toggles made in the drawer immediately.
+  const { data: checklistData } = useEditorialChecklist(task?.id ?? null);
 
   if (!task) return null;
 
@@ -138,9 +152,6 @@ export function TaskDrawer({
   const issue = task.issueId
     ? issues.find((i) => i.id === task.issueId)
     : undefined;
-  // Pull the checklist for this single task through the API hook so the
-  // stage derivation reflects toggles made in the drawer immediately.
-  const { data: checklistData } = useEditorialChecklist(task.id);
   const checklist = checklistData ?? undefined;
   const stageInfo = deriveStoryStage({ task, checklist: checklist ?? undefined, issue });
   const nextNewsroomAction = nextActionForRole(stageInfo.stage, user.role);
@@ -237,7 +248,11 @@ export function TaskDrawer({
         </DialogHeader>
 
         <div className="flex-1 min-h-0 overflow-y-auto scroll-thin">
-          <Tabs value={tab} onValueChange={setTab} className="p-5">
+          <Tabs
+            value={tab}
+            onValueChange={(value) => setRequestedTab({ taskId: task.id, value })}
+            className="p-5"
+          >
             <TabsList>
               <TabsTrigger value="brief">
                 <ClipboardList className="h-3.5 w-3.5 mr-1.5" /> Brief

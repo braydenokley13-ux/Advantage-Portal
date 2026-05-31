@@ -14,7 +14,7 @@ import {
   AlertTriangle,
   MessageSquare,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -61,6 +61,8 @@ const STATUS_TONE: Record<
   dismissed: "secondary",
 };
 
+const EMPTY_REPORTS: ModerationReportZ[] = [];
+
 export default function ModerationPage() {
   const { role, user } = useRole();
   const api = useApiClient();
@@ -70,14 +72,14 @@ export default function ModerationPage() {
   const { data: reportsData, refetch } = useModerationReports(
     filterStatus ? { status: filterStatus } : undefined
   );
-  const reports = reportsData ?? [];
+  const reports = reportsData ?? EMPTY_REPORTS;
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [openReportId, setOpenReportId] = useState<string | null>(null);
 
   // Always read all reports for stat cards (independent of tab filter).
   const { data: allReportsData } = useModerationReports();
-  const allReports = allReportsData ?? [];
+  const allReports = allReportsData ?? EMPTY_REPORTS;
 
   const stats = useMemo(() => {
     const open = allReports.filter((r) => r.status === "open").length;
@@ -384,6 +386,7 @@ export default function ModerationPage() {
       </Card>
 
       <ReportDetailDialog
+        key={selectedReport?.id ?? "no-report"}
         report={selectedReport ?? null}
         onClose={() => {
           setOpenReportId(null);
@@ -404,13 +407,8 @@ function ReportDetailDialog({
   const { user } = useRole();
   const api = useApiClient();
   const { users, messages, hideMessage: storeHide } = useStore();
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(report?.internalNote ?? "");
   const [busy, setBusy] = useState(false);
-
-  // Reset note when the dialog opens for a different report.
-  useMemo(() => {
-    setNote(report?.internalNote ?? "");
-  }, [report?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!report) return null;
   const message = messages.find((m) => m.id === report.messageId);
@@ -480,7 +478,7 @@ function ReportDetailDialog({
           {report.reporterNote && (
             <div className="rounded-md border border-border bg-card p-3">
               <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
-                Reporter's note
+                Reporter&apos;s note
               </p>
               <p className="text-sm mt-1 whitespace-pre-wrap">
                 {report.reporterNote}
@@ -493,8 +491,8 @@ function ReportDetailDialog({
               Safety guidance
             </p>
             <ul className="text-xs text-amber-900/90 leading-relaxed list-disc pl-4 mt-1 space-y-0.5">
-              <li>If a teen's safety is at risk, hide the message immediately.</li>
-              <li>Address bullying/harassment early; don't wait for repeats.</li>
+              <li>If a teen&apos;s safety is at risk, hide the message immediately.</li>
+              <li>Address bullying/harassment early; don&apos;t wait for repeats.</li>
               <li>Personal info should be hidden, then resolve with a note.</li>
             </ul>
           </div>

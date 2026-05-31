@@ -76,7 +76,7 @@ export function NotificationsPopover() {
               <Bell className="h-5 w-5 text-muted-foreground mx-auto mb-1.5" />
               <p className="text-sm font-medium">Nothing yet</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">
-                We'll notify you about tasks, reviews, and messages.
+                We&apos;ll notify you about tasks, reviews, and messages.
               </p>
             </div>
           ) : (
