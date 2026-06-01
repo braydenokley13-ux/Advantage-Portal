@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MockModeBanner } from "@/components/shell/mock-mode-banner";
-import { useDemoUsers, useSession } from "@/lib/session";
+import { isDemoMode, useDemoUsers, useSession } from "@/lib/session";
 import { cn, initials } from "@/lib/utils";
 import type { Role } from "@/lib/types";
 
@@ -74,10 +74,28 @@ function DemoLogin({ next }: { next: string }) {
   const router = useRouter();
   const session = useSession();
   const demoUsers = useDemoUsers();
+  // Demo affordances are gated behind NEXT_PUBLIC_DEMO_MODE so the user
+  // picker can never be shipped as a production sign-in path.
+  const demoEnabled = isDemoMode();
 
   function pick(userId: string) {
+    if (!demoEnabled) return;
     session.signInAsDemoUser(userId);
     router.replace(next);
+  }
+
+  if (!demoEnabled) {
+    return (
+      <Card>
+        <CardContent className="p-6 text-center space-y-3">
+          <p className="text-sm font-medium">Sign-in is invite-only.</p>
+          <p className="text-xs text-muted-foreground">
+            Real authentication ships in the next release. If you should
+            have access, ask an admin to send you an invite.
+          </p>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (

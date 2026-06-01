@@ -26,6 +26,7 @@ export default function AnnouncementsPage() {
   } = useStore();
   const [draft, setDraft] = useState("");
   const [pinNew, setPinNew] = useState(true);
+  const [busy, setBusy] = useState(false);
 
   const allTeam = conversations.find((c) => c.kind === "all_team");
   const allowPost = canPostAnnouncement(role);
@@ -45,25 +46,31 @@ export default function AnnouncementsPage() {
   const feed = thread.filter((m) => !m.pinnedAt);
 
   async function post() {
-    if (!draft.trim() || !allTeam || !allowPost) return;
-    const m = await sendMessage({
-      conversationId: allTeam.id,
-      authorId: user.id,
-      body: draft.trim(),
-    });
-    if (pinNew && allowPin) {
-      await togglePinMessage(m.id);
-    }
-    for (const memberId of allTeam.memberIds) {
-      if (memberId === user.id) continue;
-      pushNotification({
-        userId: memberId,
-        kind: "announcement",
-        title: pinNew ? "New pinned announcement" : "New announcement",
-        body: draft.trim().slice(0, 120),
+    if (busy || !draft.trim() || !allTeam || !allowPost) return;
+    setBusy(true);
+    try {
+      const body = draft.trim();
+      const m = await sendMessage({
+        conversationId: allTeam.id,
+        authorId: user.id,
+        body,
       });
+      if (pinNew && allowPin) {
+        await togglePinMessage(m.id);
+      }
+      for (const memberId of allTeam.memberIds) {
+        if (memberId === user.id) continue;
+        pushNotification({
+          userId: memberId,
+          kind: "announcement",
+          title: pinNew ? "New pinned announcement" : "New announcement",
+          body: body.slice(0, 120),
+        });
+      }
+      setDraft("");
+    } finally {
+      setBusy(false);
     }
-    setDraft("");
   }
 
   return (
@@ -105,9 +112,9 @@ export default function AnnouncementsPage() {
               <Button
                 variant="gradient"
                 onClick={post}
-                disabled={!draft.trim()}
+                disabled={!draft.trim() || busy}
               >
-                <Send className="h-4 w-4" /> Post announcement
+                <Send className="h-4 w-4" /> {busy ? "Posting…" : "Post announcement"}
               </Button>
             </div>
           </CardContent>

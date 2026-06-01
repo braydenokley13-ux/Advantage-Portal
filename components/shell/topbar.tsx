@@ -27,6 +27,10 @@ type SearchResult = {
 
 const PER_GROUP = 5;
 
+// Global search is on the roadmap but not implemented yet — the previous
+// always-visible search input was a placeholder with no handler. Hidden
+// here until the search index ships so users don't type into a dead
+// affordance.
 export function Topbar() {
   const router = useRouter();
   const { user, role } = useRole();

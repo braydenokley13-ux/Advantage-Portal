@@ -154,9 +154,28 @@ function EscalationCard({
   flag: SensitiveFlag;
   raisedByName?: string;
   decidedByName?: string;
-  onDecide: (status: "cleared" | "holding") => void;
+  onDecide: (status: "cleared" | "holding") => Promise<void>;
   onOpenTask: () => void;
 }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function decide(status: "cleared" | "holding") {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onDecide(status);
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Couldn't update that flag. Please try again."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <Card>
       <CardHeader className="flex-row items-start justify-between space-y-0">
@@ -213,11 +232,12 @@ function EscalationCard({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => onDecide("cleared")}
+              disabled={busy}
+              onClick={() => decide("cleared")}
             >
               {flag.status === "holding" ? (
                 <>
-                  <ShieldCheck className="h-3.5 w-3.5" /> Release & clear
+                  <ShieldCheck className="h-3.5 w-3.5" /> Release &amp; clear
                 </>
               ) : (
                 <>
@@ -230,12 +250,14 @@ function EscalationCard({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => onDecide("holding")}
+              disabled={busy}
+              onClick={() => decide("holding")}
             >
               <Pause className="h-3.5 w-3.5" /> Hold
             </Button>
           )}
         </div>
+        {error && <p className="text-xs text-red-600">{error}</p>}
       </CardContent>
     </Card>
   );

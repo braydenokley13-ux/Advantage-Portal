@@ -48,6 +48,7 @@ export function ChatView({
   const api = useApiClient();
   const conversation = conversations.find((c) => c.id === conversationId);
   const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
   const [reportedIds, setReportedIds] = useState<Set<string>>(() => new Set());
   const [reportTarget, setReportTarget] = useState<{
     id: string;
@@ -91,13 +92,18 @@ export function ChatView({
       : undefined;
 
   function send() {
-    if (!draft.trim() || !canPost) return;
-    sendMessage({
-      conversationId: conversation!.id,
-      authorId: user.id,
-      body: draft.trim(),
-    });
-    setDraft("");
+    if (sending || !draft.trim() || !canPost) return;
+    setSending(true);
+    try {
+      sendMessage({
+        conversationId: conversation!.id,
+        authorId: user.id,
+        body: draft.trim(),
+      });
+      setDraft("");
+    } finally {
+      setSending(false);
+    }
   }
 
   async function submitReport(input: {
@@ -321,7 +327,7 @@ export function ChatView({
               variant="gradient"
               size="icon"
               onClick={send}
-              disabled={!draft.trim()}
+              disabled={!draft.trim() || sending}
             >
               <Send className="h-4 w-4" />
               <span className="sr-only">Send</span>

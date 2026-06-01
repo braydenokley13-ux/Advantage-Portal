@@ -132,6 +132,9 @@ export function TaskDrawer({
 
   // Pull the checklist for this single task through the API hook so the
   // stage derivation reflects toggles made in the drawer immediately.
+  // Runs BEFORE any early-return so React's hook count stays stable across
+  // renders. The hook accepts nullable ids and resolves to null when
+  // there's no task yet.
   const { data: checklistData } = useEditorialChecklist(task?.id ?? null);
 
   if (!task) return null;

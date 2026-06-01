@@ -91,6 +91,8 @@ export function ReviewPanel({
   const { reviews, submitReview } = useStore();
   const [picked, setPicked] = useState<ReviewDecision | null>(null);
   const [notes, setNotes] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const allowed = canReview({ task, user });
   const submissionReviews = submission
@@ -146,17 +148,31 @@ export function ReviewPanel({
     );
   }
 
-  function decide() {
-    if (!picked || !submission) return;
-    submitReview({
-      submissionId: submission.id,
-      reviewerId: user.id,
-      decision: picked,
-      notes: notes.trim() || undefined,
-    });
-    setPicked(null);
-    setNotes("");
-    onDecided?.();
+  async function decide() {
+    if (!picked || !submission || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await Promise.resolve(
+        submitReview({
+          submissionId: submission.id,
+          reviewerId: user.id,
+          decision: picked,
+          notes: notes.trim() || undefined,
+        })
+      );
+      setPicked(null);
+      setNotes("");
+      onDecided?.();
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Couldn't record that decision. Please try again."
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -230,16 +246,17 @@ export function ReviewPanel({
 
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
-          Reviewing {`v${submission.version}`} of &quot;{task.title}&quot;.
+          Reviewing {`v${submission.version}`} of &ldquo;{task.title}&rdquo;.
         </p>
         <Button
           variant="gradient"
-          disabled={!picked}
+          disabled={!picked || busy}
           onClick={decide}
         >
-          Submit decision
+          {busy ? "Saving…" : "Submit decision"}
         </Button>
       </div>
+      {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   );
 }

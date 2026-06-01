@@ -51,9 +51,62 @@ export function SensitivePanel({
   const [reason, setReason] = useState<SensitiveReason>("student_privacy");
   const [notes, setNotes] = useState("");
   const [decisionNote, setDecisionNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const canDecide = role === "leader" || role === "admin";
   const canRaise = !task.sensitive;
+
+  async function runDecision(
+    status: "cleared" | "holding",
+    note?: string
+  ) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.decideSensitiveFlag({
+        taskId: task.id,
+        decidedById: user.id,
+        status,
+        note,
+      });
+      onChanged?.();
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Couldn't update that flag. Please try again."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runRaise() {
+    if (busy || !notes.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.raiseSensitiveFlag({
+        taskId: task.id,
+        raisedById: user.id,
+        reason,
+        notes: notes.trim(),
+      });
+      setOpen(false);
+      setNotes("");
+      onChanged?.();
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Couldn't raise that flag. Please try again."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
 
   if (task.sensitive) {
     const f = task.sensitive;
@@ -97,39 +150,31 @@ export function SensitivePanel({
               onChange={(e) => setDecisionNote(e.target.value)}
               placeholder="Decision note for the writer / editor."
               className="min-h-[60px]"
+              disabled={busy}
             />
             <div className="flex gap-2">
               <Button
                 size="sm"
                 variant="outline"
-                onClick={async () => {
-                  await api.decideSensitiveFlag({
-                    taskId: task.id,
-                    decidedById: user.id,
-                    status: "cleared",
-                    note: decisionNote.trim() || undefined,
-                  });
-                  onChanged?.();
-                }}
+                disabled={busy}
+                onClick={() =>
+                  runDecision("cleared", decisionNote.trim() || undefined)
+                }
               >
                 <Play className="h-3.5 w-3.5" /> Clear (allow publish)
               </Button>
               <Button
                 size="sm"
                 variant="outline"
-                onClick={async () => {
-                  await api.decideSensitiveFlag({
-                    taskId: task.id,
-                    decidedById: user.id,
-                    status: "holding",
-                    note: decisionNote.trim() || undefined,
-                  });
-                  onChanged?.();
-                }}
+                disabled={busy}
+                onClick={() =>
+                  runDecision("holding", decisionNote.trim() || undefined)
+                }
               >
                 <Pause className="h-3.5 w-3.5" /> Hold
               </Button>
             </div>
+            {error && <p className="text-xs text-red-600">{error}</p>}
           </div>
         )}
         {canDecide && f.status !== "open" && (
@@ -137,17 +182,14 @@ export function SensitivePanel({
             <Button
               size="sm"
               variant="ghost"
-              onClick={async () => {
-                await api.decideSensitiveFlag({
-                  taskId: task.id,
-                  decidedById: user.id,
-                  status: f.status === "cleared" ? "holding" : "cleared",
-                });
-                onChanged?.();
-              }}
+              disabled={busy}
+              onClick={() =>
+                runDecision(f.status === "cleared" ? "holding" : "cleared")
+              }
             >
               {f.status === "cleared" ? "Hold again" : "Re-clear"}
             </Button>
+            {error && <p className="text-xs text-red-600">{error}</p>}
           </div>
         )}
       </div>
@@ -199,14 +241,17 @@ export function SensitivePanel({
         onChange={(e) => setNotes(e.target.value)}
         placeholder="What is the editorial concern? Be brief and specific."
         className="min-h-[80px]"
+        disabled={busy}
       />
       <div className="flex justify-end gap-2">
         <Button
           variant="ghost"
           size="sm"
+          disabled={busy}
           onClick={() => {
             setOpen(false);
             setNotes("");
+            setError(null);
           }}
         >
           Cancel
@@ -214,22 +259,13 @@ export function SensitivePanel({
         <Button
           variant="gradient"
           size="sm"
-          disabled={!notes.trim()}
-          onClick={async () => {
-            await api.raiseSensitiveFlag({
-              taskId: task.id,
-              raisedById: user.id,
-              reason,
-              notes: notes.trim(),
-            });
-            setOpen(false);
-            setNotes("");
-            onChanged?.();
-          }}
+          disabled={!notes.trim() || busy}
+          onClick={runRaise}
         >
-          Raise flag
+          {busy ? "Saving…" : "Raise flag"}
         </Button>
       </div>
+      {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   );
 }

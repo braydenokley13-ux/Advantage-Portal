@@ -410,6 +410,15 @@ function ReportDetailDialog({
   const [note, setNote] = useState(report?.internalNote ?? "");
   const [busy, setBusy] = useState(false);
 
+  // Reset the note when the dialog opens for a different report. React
+  // recommends adjusting state during render (tracking the previous id)
+  // over a setState-in-effect for this "derive from props" case.
+  const [lastReportId, setLastReportId] = useState(report?.id);
+  if (report?.id !== lastReportId) {
+    setLastReportId(report?.id);
+    setNote(report?.internalNote ?? "");
+  }
+
   if (!report) return null;
   const message = messages.find((m) => m.id === report.messageId);
   const reporter = users.find((u) => u.id === report.reporterId);

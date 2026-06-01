@@ -34,13 +34,8 @@ export default function AdminPage() {
   const { role } = useRole();
   const { users, tasks, notifications } = useStore();
 
-  const active = users.filter((u) => u.active !== false).length;
-  const deactivated = users.length - active;
-  const admins = users.filter((u) => u.role === "admin").length;
-  const openTasks = tasks.filter((t) => t.status !== "complete").length;
-
-  // Synthesize a tiny audit-log feed from the in-memory event stream so
-  // the page demonstrates the shape of a real audit-log page.
+  // Hooks must run unconditionally — derive everything before any
+  // possible early-return.
   const auditEvents = useMemo(
     () =>
       notifications
@@ -73,6 +68,11 @@ export default function AdminPage() {
       </div>
     );
   }
+
+  const active = users.filter((u) => u.active !== false).length;
+  const deactivated = users.length - active;
+  const admins = users.filter((u) => u.role === "admin").length;
+  const openTasks = tasks.filter((t) => t.status !== "complete").length;
 
   return (
     <div className="container py-6 md:py-8 space-y-6">

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { ChevronDown, LogOut } from "lucide-react";
-import { useSession } from "@/lib/session";
+import { isDemoMode, useSession } from "@/lib/session";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -27,12 +27,10 @@ const ROLE_TONE: Record<Role, "default" | "secondary" | "warning" | "danger"> = 
 
 export function RoleSwitcher() {
   const router = useRouter();
-  const { currentUser, allUsers, signInAsDemoUser, signOut, mode } =
-    useSession();
+  const { currentUser, allUsers, signInAsDemoUser, signOut } = useSession();
+  const demo = isDemoMode();
 
   if (!currentUser) return null;
-
-  const isDemo = mode === "mock";
 
   return (
     <DropdownMenu>
@@ -50,8 +48,15 @@ export function RoleSwitcher() {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-72">
-        {isDemo ? (
+        <DropdownMenuLabel className="flex flex-col gap-0.5">
+          <span>{currentUser.name}</span>
+          <span className="text-[11px] text-muted-foreground capitalize font-normal">
+            {currentUser.email} · {currentUser.role}
+          </span>
+        </DropdownMenuLabel>
+        {demo && (
           <>
+            <DropdownMenuSeparator />
             <DropdownMenuLabel>Switch demo user</DropdownMenuLabel>
             <DropdownMenuRadioGroup
               value={currentUser.id}
@@ -68,23 +73,13 @@ export function RoleSwitcher() {
                           {u.email}
                         </span>
                       </div>
-                      <Badge
-                        variant={ROLE_TONE[u.role]}
-                        className="capitalize"
-                      >
+                      <Badge variant={ROLE_TONE[u.role]} className="capitalize">
                         {u.role}
                       </Badge>
                     </div>
                   </DropdownMenuRadioItem>
                 ))}
             </DropdownMenuRadioGroup>
-          </>
-        ) : (
-          <>
-            <DropdownMenuLabel>{currentUser.name}</DropdownMenuLabel>
-            <DropdownMenuLabel className="pt-0 text-xs font-normal text-muted-foreground">
-              {currentUser.email}
-            </DropdownMenuLabel>
           </>
         )}
         <DropdownMenuSeparator />
@@ -97,7 +92,7 @@ export function RoleSwitcher() {
           <LogOut className="h-4 w-4" />
           Sign out
         </DropdownMenuItem>
-        {isDemo && (
+        {demo && (
           <DropdownMenuLabel className="text-[10px] font-normal">
             Demo session — persisted in localStorage.
           </DropdownMenuLabel>

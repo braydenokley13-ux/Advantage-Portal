@@ -23,6 +23,8 @@ export function CommentsPanel({
   const { user } = useRole();
   const { comments, users, addComment, toggleResolveComment } = useStore();
   const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const allowed = canComment({ task, user });
 
@@ -48,15 +50,29 @@ export function CommentsPanel({
     );
   }
 
-  function send() {
-    if (!draft.trim() || !submission) return;
-    addComment({
-      submissionId: submission.id,
-      authorId: user.id,
-      body: draft.trim(),
-      inline: false,
-    });
-    setDraft("");
+  async function send() {
+    if (busy || !draft.trim() || !submission) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await Promise.resolve(
+        addComment({
+          submissionId: submission.id,
+          authorId: user.id,
+          body: draft.trim(),
+          inline: false,
+        })
+      );
+      setDraft("");
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Couldn't post that comment. Please try again."
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -138,10 +154,18 @@ export function CommentsPanel({
               <p className="text-[10px] text-muted-foreground">
                 For line-anchored notes, use the inline viewer in the Review tab.
               </p>
-              <Button size="sm" onClick={send} disabled={!draft.trim()}>
-                <Send className="h-3.5 w-3.5" /> Comment
+              <Button
+                size="sm"
+                onClick={send}
+                disabled={!draft.trim() || busy}
+              >
+                <Send className="h-3.5 w-3.5" />{" "}
+                {busy ? "Posting…" : "Comment"}
               </Button>
             </div>
+            {error && (
+              <p className="px-2 pb-2 text-xs text-red-600">{error}</p>
+            )}
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">

@@ -3,7 +3,7 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { initials, cn } from "@/lib/utils";
-import { userById } from "@/lib/mock-data";
+import { useStore } from "@/lib/store";
 import type { Task } from "@/lib/types";
 import {
   BookOpen,
@@ -40,11 +40,23 @@ export function TaskCard({
   /** Derived sub-state: this in_progress task came back after changes were requested. */
   changesRequested?: boolean;
 }) {
-  const writer = userById(task.writerId);
-  const editor = task.editorId ? userById(task.editorId) : undefined;
+  // Use the live store so writer/editor avatars resolve against whichever
+  // data mode is active (mock or Supabase). The previous `userById` was
+  // wired only to the seed mock data and silently returned undefined in
+  // Supabase mode, hiding the assignee avatars on every card.
+  const { users, submissions } = useStore();
+  const writer = users.find((u) => u.id === task.writerId);
+  const editor = task.editorId
+    ? users.find((u) => u.id === task.editorId)
+    : undefined;
   const due = new Date(task.deadline);
   const overdue = isPast(due) && task.status !== "complete";
   const pendingExtension = task.extensionRequest?.status === "pending";
+  const currentVersion =
+    submissions.find((s) => s.id === task.currentSubmissionId)?.version ??
+    submissions
+      .filter((s) => s.taskId === task.id)
+      .reduce((max, s) => Math.max(max, s.version), 0);
 
   return (
     <motion.div
@@ -138,10 +150,11 @@ export function TaskCard({
         <div className="border-t border-border px-3 py-1.5 flex items-center gap-1.5 text-[11px] text-amber-700 bg-amber-50 rounded-b-lg">
           <MessageSquare className="h-3 w-3" />
           <span>Awaiting editor review</span>
-          <Badge variant="warning" className="ml-auto">
-            v
-            {/* version is implied; we show a marker */}1
-          </Badge>
+          {currentVersion > 0 && (
+            <Badge variant="warning" className="ml-auto">
+              v{currentVersion}
+            </Badge>
+          )}
         </div>
       )}
     </motion.div>

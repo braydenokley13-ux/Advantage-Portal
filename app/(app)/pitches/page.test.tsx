@@ -89,33 +89,22 @@ describe("PitchForm", () => {
     });
   });
 
-  it("selects the first real section after sections finish loading", async () => {
+  it("enables submit once the required fields are filled", async () => {
     const onSubmitted = vi.fn();
-    const { rerender } = render(
-      <PitchForm sections={[]} onSubmitted={onSubmitted} />
-    );
+    render(<PitchForm onSubmitted={onSubmitted} />);
 
-    const sectionSelect = screen.getByLabelText("Section");
-    expect(sectionSelect).toBeDisabled();
-    expect(sectionSelect).toHaveValue("");
-
-    rerender(<PitchForm sections={sections} onSubmitted={onSubmitted} />);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Section")).toHaveValue("sec-news");
-    });
+    expect(
+      screen.getByRole("button", { name: /submit pitch/i })
+    ).toBeDisabled();
 
     fillRequiredFields();
     expect(screen.getByRole("button", { name: /submit pitch/i })).toBeEnabled();
   });
 
-  it("submits the section the writer chooses", async () => {
+  it("submits the pitch the writer composes", async () => {
     const onSubmitted = vi.fn();
-    render(<PitchForm sections={sections} onSubmitted={onSubmitted} />);
+    render(<PitchForm onSubmitted={onSubmitted} />);
 
-    fireEvent.change(screen.getByLabelText("Section"), {
-      target: { value: "sec-business" },
-    });
     fireEvent.change(screen.getByLabelText(/Expected word count/i), {
       target: { value: "900" },
     });
@@ -129,7 +118,6 @@ describe("PitchForm", () => {
     await waitFor(() => expect(mocks.createPitch).toHaveBeenCalledTimes(1));
     expect(mocks.createPitch).toHaveBeenCalledWith({
       proposedHeadline: "A useful student newsroom pitch",
-      sectionId: "sec-business",
       angle: "This pitch explains the core reporting angle.",
       whyNow: "The timing matters this week.",
       proposedSources: ["Teacher interview", "Budget spreadsheet"],
