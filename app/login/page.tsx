@@ -152,6 +152,7 @@ function SupabaseLogin({ next }: { next: string }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [signupRole, setSignupRole] = useState<"writer" | "editor">("writer");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(() =>
     authErrorMessage(search.get("error"))
@@ -180,7 +181,12 @@ function SupabaseLogin({ next }: { next: string }) {
       if (res.error) setError(res.error);
       else setNotice("reset");
     } else if (isSignup) {
-      const res = await session.signUp(name.trim(), email.trim(), password);
+      const res = await session.signUp(
+        name.trim(),
+        email.trim(),
+        password,
+        signupRole
+      );
       setBusy(false);
       if (res.error) setError(res.error);
       else if (res.needsConfirmation) setNotice("confirm");
@@ -281,6 +287,60 @@ function SupabaseLogin({ next }: { next: string }) {
                 }}
                 placeholder="Alex Rivera"
               />
+            </div>
+          )}
+
+          {isSignup && (
+            <div className="space-y-1.5">
+              <Label>I&apos;m joining as a…</Label>
+              <div
+                role="radiogroup"
+                aria-label="Account role"
+                className="grid grid-cols-2 gap-2"
+              >
+                {(
+                  [
+                    {
+                      value: "writer",
+                      label: "Writer",
+                      sub: "Pitch stories and submit drafts.",
+                    },
+                    {
+                      value: "editor",
+                      label: "Editor",
+                      sub: "Review submissions and decide pitches.",
+                    },
+                  ] as const
+                ).map((opt) => {
+                  const active = signupRole === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => {
+                        setSignupRole(opt.value);
+                        setError(null);
+                      }}
+                      className={cn(
+                        "rounded-lg border p-3 text-left transition-colors",
+                        active
+                          ? "border-primary ring-2 ring-primary/40 bg-primary/5"
+                          : "border-border hover:bg-accent"
+                      )}
+                    >
+                      <span className="text-sm font-medium">{opt.label}</span>
+                      <span className="mt-0.5 block text-[11px] text-muted-foreground leading-snug">
+                        {opt.sub}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Leader and admin access is granted by an existing admin.
+              </p>
             </div>
           )}
 
