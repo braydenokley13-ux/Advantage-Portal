@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+/* eslint-disable react-hooks/set-state-in-effect */
+
+import { useEffect, useMemo, useState } from "react";
 import {
   Lightbulb,
   CheckCircle2,
@@ -249,6 +251,24 @@ export default function PitchesPage() {
   );
 }
 
+// Minimum lengths for the three required fields. Surfaced to the writer as
+// inline hints so a too-short field never silently blocks submission.
+const MIN_HEADLINE = 7;
+const MIN_ANGLE = 7;
+const MIN_WHY_NOW = 5;
+
+const DRAFT_KEY = "advantage:pitch-draft";
+
+type PitchDraft = {
+  headline: string;
+  angle: string;
+  whyNow: string;
+  sources: string;
+  wordCount: string;
+  deadline: string;
+  note: string;
+};
+
 export function PitchForm({ onSubmitted }: { onSubmitted: () => void }) {
   const api = useApiClient();
   const { user } = useRole();
@@ -263,16 +283,115 @@ export function PitchForm({ onSubmitted }: { onSubmitted: () => void }) {
   const [submitted, setSubmitted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set true once the writer tries to submit, so we only show "field too
+  // short" hints after an attempt rather than nagging on an empty form.
+  const [attempted, setAttempted] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
 
-  const valid =
-    headline.trim().length > 6 &&
-    angle.trim().length > 6 &&
-    whyNow.trim().length > 4;
+  // Restore an in-progress draft so a refresh or accidental navigation
+  // doesn't wipe out a half-written pitch.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw) as Partial<PitchDraft>;
+      if (
+        d.headline ||
+        d.angle ||
+        d.whyNow ||
+        d.sources ||
+        d.wordCount ||
+        d.deadline ||
+        d.note
+      ) {
+        setHeadline(d.headline ?? "");
+        setAngle(d.angle ?? "");
+        setWhyNow(d.whyNow ?? "");
+        setSources(d.sources ?? "");
+        setWordCount(d.wordCount ?? "");
+        setDeadline(d.deadline ?? "");
+        setNote(d.note ?? "");
+        setDraftRestored(true);
+      }
+    } catch {
+      // Corrupt draft — ignore and start fresh.
+    }
+  }, []);
+
+  // Persist the draft as the writer types (debounced via effect coalescing).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const draft: PitchDraft = {
+      headline,
+      angle,
+      whyNow,
+      sources,
+      wordCount,
+      deadline,
+      note,
+    };
+    const hasContent = Object.values(draft).some((v) => v.trim().length > 0);
+    try {
+      if (hasContent) {
+        window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      } else {
+        window.localStorage.removeItem(DRAFT_KEY);
+      }
+    } catch {
+      // Storage unavailable (private mode / quota) — drafts just won't persist.
+    }
+  }, [headline, angle, whyNow, sources, wordCount, deadline, note]);
+
+  // Per-field validation. `missing` powers the "what's needed" checklist so
+  // the writer always knows why the button is waiting.
+  const headlineError =
+    headline.trim().length === 0
+      ? "Add a proposed headline."
+      : headline.trim().length < MIN_HEADLINE
+      ? "Give the headline a little more detail."
+      : null;
+  const angleError =
+    angle.trim().length === 0
+      ? "Describe the angle or thesis."
+      : angle.trim().length < MIN_ANGLE
+      ? "Tell us a bit more about the angle."
+      : null;
+  const whyNowError =
+    whyNow.trim().length === 0
+      ? "Explain why this story matters now."
+      : whyNow.trim().length < MIN_WHY_NOW
+      ? "Add a little more on the timing."
+      : null;
+
+  const missing = [
+    headlineError && { label: "Proposed headline", hint: headlineError },
+    angleError && { label: "Angle / thesis", hint: angleError },
+    whyNowError && { label: "Why now", hint: whyNowError },
+  ].filter(Boolean) as { label: string; hint: string }[];
+
+  const valid = missing.length === 0;
 
   const todayIso = new Date().toISOString().slice(0, 10);
 
+  function clearDraft() {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // ignore
+    }
+  }
+
   async function handleSubmit() {
-    if (!valid || busy) return;
+    if (busy) return;
+    // Always respond to the click: if something's missing, reveal exactly
+    // what — never leave the writer staring at a dead, silent button.
+    if (!valid) {
+      setAttempted(true);
+      setError(null);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -293,6 +412,8 @@ export function PitchForm({ onSubmitted }: { onSubmitted: () => void }) {
       });
       onSubmitted();
       setSubmitted(true);
+      setAttempted(false);
+      setDraftRestored(false);
       setHeadline("");
       setAngle("");
       setWhyNow("");
@@ -300,6 +421,7 @@ export function PitchForm({ onSubmitted }: { onSubmitted: () => void }) {
       setWordCount("");
       setDeadline("");
       setNote("");
+      clearDraft();
       setTimeout(() => setSubmitted(false), 2400);
     } catch (e) {
       setError(
@@ -312,6 +434,19 @@ export function PitchForm({ onSubmitted }: { onSubmitted: () => void }) {
     }
   }
 
+  function discardDraft() {
+    setHeadline("");
+    setAngle("");
+    setWhyNow("");
+    setSources("");
+    setWordCount("");
+    setDeadline("");
+    setNote("");
+    setAttempted(false);
+    setDraftRestored(false);
+    clearDraft();
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -322,14 +457,34 @@ export function PitchForm({ onSubmitted }: { onSubmitted: () => void }) {
         </p>
       </CardHeader>
       <CardContent className="px-5 pb-5 space-y-4">
+        {draftRestored && (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-secondary/40 p-3 text-xs">
+            <span className="text-muted-foreground">
+              We restored an unsent draft you started earlier.
+            </span>
+            <button
+              type="button"
+              onClick={discardDraft}
+              className="font-medium text-foreground underline-offset-2 hover:underline"
+            >
+              Discard
+            </button>
+          </div>
+        )}
         <div className="space-y-1.5">
-          <Label htmlFor="p-headline">Proposed headline</Label>
+          <Label htmlFor="p-headline">
+            Proposed headline <span className="text-red-500">*</span>
+          </Label>
           <Input
             id="p-headline"
             value={headline}
             onChange={(e) => setHeadline(e.target.value)}
             placeholder="The story in one sentence"
+            aria-invalid={attempted && !!headlineError}
           />
+          {attempted && headlineError && (
+            <p className="text-xs text-red-600">{headlineError}</p>
+          )}
         </div>
 
         <div className="space-y-1.5">
@@ -349,25 +504,37 @@ export function PitchForm({ onSubmitted }: { onSubmitted: () => void }) {
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="p-angle">Angle / thesis</Label>
+          <Label htmlFor="p-angle">
+            Angle / thesis <span className="text-red-500">*</span>
+          </Label>
           <Textarea
             id="p-angle"
             value={angle}
             onChange={(e) => setAngle(e.target.value)}
             placeholder="What is this story actually about? One or two sentences."
             className="min-h-[80px]"
+            aria-invalid={attempted && !!angleError}
           />
+          {attempted && angleError && (
+            <p className="text-xs text-red-600">{angleError}</p>
+          )}
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="p-why">Why now?</Label>
+          <Label htmlFor="p-why">
+            Why now? <span className="text-red-500">*</span>
+          </Label>
           <Textarea
             id="p-why"
             value={whyNow}
             onChange={(e) => setWhyNow(e.target.value)}
             placeholder="What is the peg? What changed this week or month?"
             className="min-h-[60px]"
+            aria-invalid={attempted && !!whyNowError}
           />
+          {attempted && whyNowError && (
+            <p className="text-xs text-red-600">{whyNowError}</p>
+          )}
         </div>
 
         <div className="space-y-1.5">
@@ -409,6 +576,19 @@ export function PitchForm({ onSubmitted }: { onSubmitted: () => void }) {
           </div>
         </div>
 
+        {attempted && !valid && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+            <p className="font-medium">Add a little more before you submit:</p>
+            <ul className="mt-1 list-disc pl-5 space-y-0.5">
+              {missing.map((m) => (
+                <li key={m.label}>
+                  <span className="font-medium">{m.label}</span> — {m.hint}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <div className="flex items-center justify-between border-t border-border pt-4">
           <p className="text-[11px] text-muted-foreground">
             Editors decide together. You&apos;ll get a notification when there&apos;s
@@ -416,7 +596,8 @@ export function PitchForm({ onSubmitted }: { onSubmitted: () => void }) {
           </p>
           <Button
             variant="gradient"
-            disabled={!valid || busy}
+            disabled={busy}
+            aria-disabled={!valid}
             onClick={handleSubmit}
           >
             <Send className="h-4 w-4" /> {busy ? "Sending…" : "Submit pitch"}

@@ -58,19 +58,20 @@ const sections = [
 ];
 
 function fillRequiredFields() {
-  fireEvent.change(screen.getByLabelText("Proposed headline"), {
+  fireEvent.change(screen.getByLabelText(/Proposed headline/i), {
     target: { value: "A useful student newsroom pitch" },
   });
-  fireEvent.change(screen.getByLabelText("Angle / thesis"), {
+  fireEvent.change(screen.getByLabelText(/Angle \/ thesis/i), {
     target: { value: "This pitch explains the core reporting angle." },
   });
-  fireEvent.change(screen.getByLabelText("Why now?"), {
+  fireEvent.change(screen.getByLabelText(/Why now\?/i), {
     target: { value: "The timing matters this week." },
   });
 }
 
 describe("PitchForm", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     mocks.createPitch.mockReset();
     mocks.sections = [];
     mocks.pitches = [];
@@ -89,16 +90,28 @@ describe("PitchForm", () => {
     });
   });
 
-  it("enables submit once the required fields are filled", async () => {
+  it("explains what's missing instead of silently blocking submit", async () => {
     const onSubmitted = vi.fn();
     render(<PitchForm onSubmitted={onSubmitted} />);
 
+    const button = screen.getByRole("button", { name: /submit pitch/i });
+    // The button is clickable even on an empty form — clicking surfaces
+    // exactly what's needed rather than doing nothing.
+    expect(button).toBeEnabled();
+
+    fireEvent.click(button);
+
+    expect(mocks.createPitch).not.toHaveBeenCalled();
     expect(
-      screen.getByRole("button", { name: /submit pitch/i })
-    ).toBeDisabled();
+      screen.getByText(/Add a little more before you submit/i)
+    ).toBeInTheDocument();
 
     fillRequiredFields();
-    expect(screen.getByRole("button", { name: /submit pitch/i })).toBeEnabled();
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/Add a little more before you submit/i)
+      ).not.toBeInTheDocument()
+    );
   });
 
   it("submits the pitch the writer composes", async () => {

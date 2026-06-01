@@ -650,16 +650,22 @@ function extensionPanel(args: {
           variant="gradient"
           size="sm"
           disabled={!extDate || !extReason.trim()}
-          onClick={() => {
-            requestExtension({
-              taskId: task.id,
-              requestedById: user.id,
-              newDeadline: new Date(extDate).toISOString(),
-              reason: extReason.trim(),
-            });
-            setExtOpen(false);
-            setExtDate("");
-            setExtReason("");
+          onClick={async () => {
+            try {
+              await requestExtension({
+                taskId: task.id,
+                requestedById: user.id,
+                newDeadline: new Date(extDate).toISOString(),
+                reason: extReason.trim(),
+              });
+              // Only clear the form once the request actually persisted,
+              // so a failure doesn't wipe the writer's reason silently.
+              setExtOpen(false);
+              setExtDate("");
+              setExtReason("");
+            } catch {
+              // Leave the form open and populated so the writer can retry.
+            }
           }}
         >
           Send request
