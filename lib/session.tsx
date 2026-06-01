@@ -53,7 +53,12 @@ type SessionValue = {
   /** Supabase-mode password reset email. */
   sendPasswordReset: (email: string) => Promise<AuthResult>;
   /** Supabase-mode self-service sign-up (open registration). */
-  signUp: (name: string, email: string, password: string) => Promise<AuthResult>;
+  signUp: (
+    name: string,
+    email: string,
+    password: string,
+    role?: "writer" | "editor"
+  ) => Promise<AuthResult>;
   /** Supabase-mode: update the signed-in user's own display name + avatar. */
   updateProfile: (patch: {
     name?: string;
@@ -267,13 +272,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     async (
       name: string,
       email: string,
-      password: string
+      password: string,
+      role: "writer" | "editor" = "writer"
     ): Promise<AuthResult> => {
       // Handled server-side so Supabase's email rate limits never apply.
       const res = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email, password, role }),
       });
       const result = await readAuthResponse(res);
       if (result.error) return result;

@@ -9,6 +9,9 @@ const SignupRequest = z.object({
   name: z.string().trim().min(2).max(80),
   email: z.string().trim().email(),
   password: z.string().min(6).max(128),
+  // Self-signup is limited to writer/editor — elevated roles (leader,
+  // admin) are only ever granted by an existing admin, never self-selected.
+  role: z.enum(["writer", "editor"]).default("writer"),
 });
 
 function friendlySignupError(message: string) {
@@ -50,7 +53,7 @@ export async function POST(req: NextRequest) {
       email,
       password: parsed.data.password,
       options: {
-        data: { name: parsed.data.name },
+        data: { name: parsed.data.name, role: parsed.data.role },
         redirectTo: authCallbackUrl(req, next),
       },
     });
