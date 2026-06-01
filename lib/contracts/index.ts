@@ -421,7 +421,7 @@ export type PitchStatusZ = z.infer<typeof PitchStatusSchema>;
 export const PitchSchema = z.object({
   id: z.string(),
   proposedHeadline: z.string(),
-  sectionId: z.string(),
+  sectionId: z.string().optional(),
   angle: z.string(),
   whyNow: z.string(),
   proposedSources: z.array(z.string()),
@@ -440,7 +440,7 @@ export type PitchZ = z.infer<typeof PitchSchema>;
 
 export const PitchCreateInput = z.object({
   proposedHeadline: z.string().min(1),
-  sectionId: z.string(),
+  sectionId: z.string().optional(),
   angle: z.string().min(1),
   whyNow: z.string().min(1),
   proposedSources: z.array(z.string()).default([]),

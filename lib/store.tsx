@@ -201,7 +201,7 @@ type StoreValue = {
   // ── Newsroom actions ─────────────────────────────────────────────────────
   createPitch: (input: {
     proposedHeadline: string;
-    sectionId: string;
+    sectionId?: string;
     angle: string;
     whyNow: string;
     proposedSources: string[];
@@ -987,7 +987,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const createPitch = useCallback(
     (input: {
       proposedHeadline: string;
-      sectionId: string;
+      sectionId?: string;
       angle: string;
       whyNow: string;
       proposedSources: string[];

@@ -186,7 +186,7 @@ export default function PitchesPage() {
         )}
 
         <TabsContent value="submit" className="mt-4">
-          <PitchForm sections={sections} onSubmitted={refetchPitches} />
+          <PitchForm onSubmitted={refetchPitches} />
         </TabsContent>
 
         <TabsContent value="mine" className="mt-4 space-y-3">
@@ -239,18 +239,11 @@ export default function PitchesPage() {
   );
 }
 
-export function PitchForm({
-  sections,
-  onSubmitted,
-}: {
-  sections: { id: string; name: string }[];
-  onSubmitted: () => void;
-}) {
+export function PitchForm({ onSubmitted }: { onSubmitted: () => void }) {
   const api = useApiClient();
   const { user } = useRole();
 
   const [headline, setHeadline] = useState("");
-  const [requestedSectionId, setRequestedSectionId] = useState("");
   const [angle, setAngle] = useState("");
   const [whyNow, setWhyNow] = useState("");
   const [sources, setSources] = useState("");
@@ -259,23 +252,16 @@ export function PitchForm({
   const [note, setNote] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
-  const selectedSectionExists = sections.some((s) => s.id === requestedSectionId);
-  const sectionId = selectedSectionExists
-    ? requestedSectionId
-    : sections[0]?.id ?? "";
-
   const valid =
     headline.trim().length > 6 &&
     angle.trim().length > 6 &&
-    whyNow.trim().length > 4 &&
-    sectionId.length > 0;
+    whyNow.trim().length > 4;
 
   async function handleSubmit() {
     if (!valid) return;
     try {
       await api.createPitch({
         proposedHeadline: headline.trim(),
-        sectionId,
         angle: angle.trim(),
         whyNow: whyNow.trim(),
         proposedSources: sources
@@ -324,40 +310,20 @@ export function PitchForm({
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="p-section">Section</Label>
-            <Select
-              id="p-section"
-              value={sectionId}
-              onChange={(e) => setRequestedSectionId(e.target.value)}
-              disabled={sections.length === 0}
-            >
-              {sections.length === 0 && (
-                <option value="">Loading sections...</option>
-              )}
-              {sections.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="p-words">
-              Expected word count{" "}
-              <span className="text-muted-foreground">(optional)</span>
-            </Label>
-            <Input
-              id="p-words"
-              type="number"
-              min={1}
-              step={50}
-              value={wordCount}
-              onChange={(e) => setWordCount(e.target.value)}
-              placeholder="e.g. 1200"
-            />
-          </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="p-words">
+            Expected word count{" "}
+            <span className="text-muted-foreground">(optional)</span>
+          </Label>
+          <Input
+            id="p-words"
+            type="number"
+            min={1}
+            step={50}
+            value={wordCount}
+            onChange={(e) => setWordCount(e.target.value)}
+            placeholder="e.g. 1200"
+          />
         </div>
 
         <div className="space-y-1.5">
