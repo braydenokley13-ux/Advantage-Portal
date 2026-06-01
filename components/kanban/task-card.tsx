@@ -12,6 +12,7 @@ import {
   GripVertical,
   MessageSquare,
   RefreshCw,
+  Send,
 } from "lucide-react";
 import { format, formatDistanceToNowStrict, isPast } from "date-fns";
 import { motion } from "framer-motion";
@@ -30,6 +31,7 @@ export function TaskCard({
   isDragging,
   onClick,
   changesRequested,
+  showSubmit,
 }: {
   task: Task;
   draggable: boolean;
@@ -39,6 +41,8 @@ export function TaskCard({
   onClick?: () => void;
   /** Derived sub-state: this in_progress task came back after changes were requested. */
   changesRequested?: boolean;
+  /** Writer owns this not-yet-submitted task — show an explicit submit CTA. */
+  showSubmit?: boolean;
 }) {
   // Use the live store so writer/editor avatars resolve against whichever
   // data mode is active (mock or Supabase). The previous `userById` was
@@ -145,6 +149,27 @@ export function TaskCard({
           </div>
         </div>
       </div>
+
+      {showSubmit && (
+        <button
+          type="button"
+          onClick={(e) => {
+            // Don't let the click also trigger card drag/select side effects.
+            e.stopPropagation();
+            onClick?.();
+          }}
+          className={cn(
+            "w-full border-t border-border px-3 py-2 flex items-center justify-center gap-1.5",
+            "text-[11px] font-medium rounded-b-lg transition-colors",
+            changesRequested
+              ? "text-amber-800 bg-amber-50 hover:bg-amber-100"
+              : "text-primary hover:bg-primary/5"
+          )}
+        >
+          <Send className="h-3 w-3" />
+          {changesRequested ? "Revise & resubmit" : "Submit work"}
+        </button>
+      )}
 
       {task.status === "submitted" && (
         <div className="border-t border-border px-3 py-1.5 flex items-center gap-1.5 text-[11px] text-amber-700 bg-amber-50 rounded-b-lg">

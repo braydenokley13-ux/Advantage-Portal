@@ -161,6 +161,14 @@ export function KanbanBoard() {
                       reviews,
                       submissionTaskMap,
                     });
+                    // A writer's own In Progress task gets an explicit "Submit
+                    // work" CTA — opening the card lands them straight on the
+                    // Submission tab. (Not Started cards prompt a drag to In
+                    // Progress first, per the board guidance.)
+                    const showSubmit =
+                      role === "writer" &&
+                      isOwn &&
+                      task.status === "in_progress";
                     return (
                       <TaskCard
                         key={task.id}
@@ -171,14 +179,15 @@ export function KanbanBoard() {
                         onDragEnd={handleDragEnd}
                         onClick={() => setOpenTaskId(task.id)}
                         changesRequested={sub === "changes_requested"}
+                        showSubmit={showSubmit}
                       />
                     );
                   })}
                 </AnimatePresence>
 
                 {items.length === 0 && (
-                  <div className="rounded-md border border-dashed border-border py-6 text-center text-xs text-muted-foreground">
-                    Nothing here
+                  <div className="rounded-md border border-dashed border-border py-6 px-3 text-center text-xs text-muted-foreground">
+                    {emptyHint(status, role)}
                   </div>
                 )}
               </div>
@@ -205,6 +214,22 @@ export function KanbanBoard() {
       )}
     </>
   );
+}
+
+function emptyHint(status: TaskStatus, role: string): string {
+  if (role === "writer") {
+    switch (status) {
+      case "not_started":
+        return "New assignments land here.";
+      case "in_progress":
+        return "Drag a task here when you start writing.";
+      case "submitted":
+        return "Open an In Progress task and click “Submit work” to land it here.";
+      case "complete":
+        return "Stories appear here once an editor approves them.";
+    }
+  }
+  return "Nothing here";
 }
 
 function ColumnDot({ status }: { status: TaskStatus }) {

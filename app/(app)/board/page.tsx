@@ -36,10 +36,13 @@ export default function BoardPage() {
         <div className="flex items-start gap-2 rounded-lg border border-border bg-card px-4 py-3 text-xs text-muted-foreground">
           <Info className="h-4 w-4 mt-0.5 text-primary" />
           <p>
-            Submission and review are gated. To move a task to{" "}
-            <span className="font-medium text-foreground">Submitted</span>,
-            submit your work. Only an editor&apos;s review can move it to{" "}
-            <span className="font-medium text-foreground">Complete</span>.
+            Drag a card to <span className="font-medium text-foreground">In Progress</span>{" "}
+            while you write. When it&apos;s ready, click{" "}
+            <span className="font-medium text-foreground">“Submit work”</span> on
+            the card (or open it and use the Submission tab) to move it to{" "}
+            <span className="font-medium text-foreground">Submitted</span> —
+            drag-to-submit is disabled on purpose. Only an editor&apos;s review
+            moves it to <span className="font-medium text-foreground">Complete</span>.
           </p>
         </div>
       )}
