@@ -25,8 +25,26 @@ export function CommentsPanel({
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
 
   const allowed = canComment({ task, user });
+
+  async function resolve(id: string) {
+    if (resolvingId) return;
+    setResolvingId(id);
+    setError(null);
+    try {
+      await Promise.resolve(toggleResolveComment(id));
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Couldn't update that comment. Please try again."
+      );
+    } finally {
+      setResolvingId(null);
+    }
+  }
 
   const { general, inline } = useMemo(() => {
     if (!submission) return { general: [] as Comment[], inline: [] as Comment[] };
@@ -124,9 +142,10 @@ export function CommentsPanel({
                     </div>
                     <button
                       type="button"
-                      onClick={() => toggleResolveComment(c.id)}
+                      onClick={() => resolve(c.id)}
+                      disabled={resolvingId === c.id}
                       className={cn(
-                        "text-xs flex items-center gap-1 rounded-md px-2 py-1 transition-colors",
+                        "text-xs flex items-center gap-1 rounded-md px-2 py-1 transition-colors disabled:opacity-50",
                         c.resolved
                           ? "bg-emerald-100 text-emerald-700"
                           : "text-muted-foreground hover:bg-accent"

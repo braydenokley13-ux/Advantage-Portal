@@ -261,6 +261,7 @@ const DRAFT_KEY = "advantage:pitch-draft";
 
 type PitchDraft = {
   headline: string;
+  sectionId: string;
   angle: string;
   whyNow: string;
   sources: string;
@@ -272,8 +273,11 @@ type PitchDraft = {
 export function PitchForm({ onSubmitted }: { onSubmitted: () => void }) {
   const api = useApiClient();
   const { user } = useRole();
+  const { data: sectionsData } = useSections();
+  const sectionOptions = sectionsData ?? EMPTY_SECTIONS;
 
   const [headline, setHeadline] = useState("");
+  const [sectionId, setSectionId] = useState("");
   const [angle, setAngle] = useState("");
   const [whyNow, setWhyNow] = useState("");
   const [sources, setSources] = useState("");
@@ -298,6 +302,7 @@ export function PitchForm({ onSubmitted }: { onSubmitted: () => void }) {
       const d = JSON.parse(raw) as Partial<PitchDraft>;
       if (
         d.headline ||
+        d.sectionId ||
         d.angle ||
         d.whyNow ||
         d.sources ||
@@ -306,6 +311,7 @@ export function PitchForm({ onSubmitted }: { onSubmitted: () => void }) {
         d.note
       ) {
         setHeadline(d.headline ?? "");
+        setSectionId(d.sectionId ?? "");
         setAngle(d.angle ?? "");
         setWhyNow(d.whyNow ?? "");
         setSources(d.sources ?? "");
@@ -324,6 +330,7 @@ export function PitchForm({ onSubmitted }: { onSubmitted: () => void }) {
     if (typeof window === "undefined") return;
     const draft: PitchDraft = {
       headline,
+      sectionId,
       angle,
       whyNow,
       sources,
@@ -341,7 +348,7 @@ export function PitchForm({ onSubmitted }: { onSubmitted: () => void }) {
     } catch {
       // Storage unavailable (private mode / quota) — drafts just won't persist.
     }
-  }, [headline, angle, whyNow, sources, wordCount, deadline, note]);
+  }, [headline, sectionId, angle, whyNow, sources, wordCount, deadline, note]);
 
   // Per-field validation. `missing` powers the "what's needed" checklist so
   // the writer always knows why the button is waiting.
@@ -397,6 +404,7 @@ export function PitchForm({ onSubmitted }: { onSubmitted: () => void }) {
     try {
       await api.createPitch({
         proposedHeadline: headline.trim(),
+        sectionId: sectionId || undefined,
         angle: angle.trim(),
         whyNow: whyNow.trim(),
         proposedSources: sources
@@ -415,6 +423,7 @@ export function PitchForm({ onSubmitted }: { onSubmitted: () => void }) {
       setAttempted(false);
       setDraftRestored(false);
       setHeadline("");
+      setSectionId("");
       setAngle("");
       setWhyNow("");
       setSources("");
@@ -436,6 +445,7 @@ export function PitchForm({ onSubmitted }: { onSubmitted: () => void }) {
 
   function discardDraft() {
     setHeadline("");
+    setSectionId("");
     setAngle("");
     setWhyNow("");
     setSources("");
@@ -486,6 +496,27 @@ export function PitchForm({ onSubmitted }: { onSubmitted: () => void }) {
             <p className="text-xs text-red-600">{headlineError}</p>
           )}
         </div>
+
+        {sectionOptions.length > 0 && (
+          <div className="space-y-1.5">
+            <Label htmlFor="p-section">
+              Section{" "}
+              <span className="text-muted-foreground">(optional)</span>
+            </Label>
+            <Select
+              id="p-section"
+              value={sectionId}
+              onChange={(e) => setSectionId(e.target.value)}
+            >
+              <option value="">No section yet</option>
+              {sectionOptions.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
 
         <div className="space-y-1.5">
           <Label htmlFor="p-words">
