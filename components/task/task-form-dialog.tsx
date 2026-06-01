@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable react-hooks/set-state-in-effect */
+
 import { useEffect, useState } from "react";
 import {
   Dialog,
@@ -263,7 +265,7 @@ export function TaskFormDialog({
           </div>
 
           <p className="text-[11px] text-muted-foreground border-t border-border pt-3">
-            Citations are an editor's call — flagging this just shows a
+            Citations are an editor&apos;s call — flagging this just shows a
             reminder on the task and lets the editor weigh sourcing during
             review. It does not block submission.
           </p>

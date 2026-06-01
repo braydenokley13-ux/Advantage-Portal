@@ -126,7 +126,14 @@ These modules map 1:1 to API route groups and to migration files for clean owner
 
 ### 3. Full Database Schema (Postgres)
 
-All tables use `uuid` PKs (default `uuid_generate_v7()`), `timestamptz` for all time columns, and `not null` unless stated. Enums are Postgres `ENUM` types.
+All tables use `uuid` PKs (default `gen_random_uuid()`), `timestamptz` for all time columns, and `not null` unless stated. Enums are Postgres `ENUM` types.
+
+The schema depends on two extensions, which must be created before any other DDL:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pgcrypto;  -- provides gen_random_uuid()
+CREATE EXTENSION IF NOT EXISTS citext;    -- case-insensitive text, used for emails
+```
 
 #### 3.1 Enums
 
@@ -149,7 +156,7 @@ CREATE TYPE delivery_channel AS ENUM ('in_app','push','email');
 
 ```sql
 CREATE TABLE users (
-  id              uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   email           citext UNIQUE NOT NULL,
   name            text NOT NULL,
   avatar_url      text,
@@ -164,7 +171,7 @@ CREATE TABLE users (
 CREATE INDEX users_role_idx ON users(role) WHERE deleted_at IS NULL;
 
 CREATE TABLE push_tokens (
-  id          uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   platform    text NOT NULL CHECK (platform IN ('ios','android','web')),
   token       text NOT NULL,
@@ -173,7 +180,7 @@ CREATE TABLE push_tokens (
 );
 
 CREATE TABLE audit_log (
-  id          uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   actor_id    uuid REFERENCES users(id) ON DELETE SET NULL,
   action      text NOT NULL,             -- e.g. 'task.create', 'user.role_change'
   entity      text NOT NULL,             -- 'task','user','submission'
@@ -189,14 +196,14 @@ CREATE INDEX audit_actor_idx  ON audit_log(actor_id, created_at DESC);
 
 ```sql
 CREATE TABLE kanban_boards (
-  id          uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name        text NOT NULL DEFAULT 'Main',
   is_default  boolean NOT NULL DEFAULT true,
   created_at  timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE kanban_columns (
-  id              uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   board_id        uuid NOT NULL REFERENCES kanban_boards(id) ON DELETE CASCADE,
   name            text NOT NULL,
   position        integer NOT NULL,
@@ -207,7 +214,7 @@ CREATE TABLE kanban_columns (
 );
 
 CREATE TABLE tasks (
-  id              uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   board_id        uuid NOT NULL REFERENCES kanban_boards(id),
   column_id       uuid NOT NULL REFERENCES kanban_columns(id),
   title           text NOT NULL,
@@ -234,7 +241,7 @@ CREATE INDEX tasks_deadline_idx ON tasks(deadline_at) WHERE status <> 'complete'
 
 ```sql
 CREATE TABLE submissions (
-  id              uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   task_id         uuid NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   submitter_id    uuid NOT NULL REFERENCES users(id),
   type            submission_type NOT NULL,
@@ -254,7 +261,7 @@ CREATE UNIQUE INDEX submissions_one_current_idx
   ON submissions(task_id) WHERE is_current = true;
 
 CREATE TABLE reviews (
-  id              uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   submission_id   uuid NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
   reviewer_id     uuid NOT NULL REFERENCES users(id),
   decision        review_decision NOT NULL,
@@ -264,7 +271,7 @@ CREATE TABLE reviews (
 CREATE INDEX reviews_submission_idx ON reviews(submission_id, created_at DESC);
 
 CREATE TABLE comments (
-  id              uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   submission_id   uuid NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
   author_id       uuid NOT NULL REFERENCES users(id),
   parent_id       uuid REFERENCES comments(id) ON DELETE CASCADE,
@@ -281,7 +288,7 @@ CREATE INDEX comments_submission_idx ON comments(submission_id, created_at);
 
 ```sql
 CREATE TABLE conversations (
-  id              uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   type            conversation_type NOT NULL,
   name            text,                          -- null for dm
   created_by      uuid REFERENCES users(id),
@@ -303,7 +310,7 @@ CREATE TABLE conversation_members (
 CREATE INDEX cm_user_idx ON conversation_members(user_id);
 
 CREATE TABLE messages (
-  id              uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   conversation_id uuid NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
   sender_id       uuid NOT NULL REFERENCES users(id),
   body            text,
@@ -323,7 +330,7 @@ CREATE TABLE message_reads (
 );
 
 CREATE TABLE attachments (
-  id              uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_kind      text NOT NULL CHECK (owner_kind IN ('message','submission')),
   owner_id        uuid NOT NULL,
   uploader_id     uuid NOT NULL REFERENCES users(id),
@@ -340,7 +347,7 @@ CREATE INDEX attachments_owner_idx ON attachments(owner_kind, owner_id);
 
 ```sql
 CREATE TABLE notifications (
-  id              uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id         uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   kind            notification_kind NOT NULL,
   payload         jsonb NOT NULL DEFAULT '{}'::jsonb,  -- { task_id, message_id, ... }
@@ -1192,7 +1199,7 @@ A single table acts as the bus. The notifier worker consumes via `LISTEN/NOTIFY`
 
 ```sql
 CREATE TABLE domain_events (
-  id          uuid PRIMARY KEY DEFAULT uuid_generate_v7(),
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   kind        text NOT NULL,                -- e.g., 'task.assigned'
   actor_id    uuid REFERENCES users(id),
   entity      text NOT NULL,

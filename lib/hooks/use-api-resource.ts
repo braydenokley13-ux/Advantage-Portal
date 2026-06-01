@@ -42,7 +42,7 @@ export function useApiResource<T>(
     } finally {
       if (tick === tickRef.current) setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/use-memo
   }, deps);
 
   useEffect(() => {

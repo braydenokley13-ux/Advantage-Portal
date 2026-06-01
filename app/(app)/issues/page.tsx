@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Newspaper,
   CalendarDays,
@@ -62,18 +62,14 @@ export default function IssuesPage() {
   const checklists = checklistsData ?? [];
 
   const [activeId, setActiveId] = useState<string>("");
-  // Default to the next non-published issue once data lands.
-  useEffect(() => {
-    if (activeId) return;
-    if (issues.length === 0) return;
-    setActiveId(
-      issues.find((i) => i.status !== "published")?.id ?? issues[0]!.id
-    );
-  }, [issues, activeId]);
-
+  const defaultActiveId =
+    issues.find((i) => i.status !== "published")?.id ?? issues[0]?.id ?? "";
+  const effectiveActiveId = issues.some((i) => i.id === activeId)
+    ? activeId
+    : defaultActiveId;
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
-  const active = issues.find((i) => i.id === activeId);
+  const active = issues.find((i) => i.id === effectiveActiveId);
   const canShip = role === "leader" || role === "admin";
 
   async function handleShip(issueId: string) {
@@ -108,7 +104,7 @@ export default function IssuesPage() {
               type="button"
               onClick={() => setActiveId(i.id)}
               className={`text-left rounded-lg border p-4 transition-colors ${
-                activeId === i.id
+                effectiveActiveId === i.id
                   ? "border-primary bg-primary/5"
                   : "border-border bg-card hover:bg-accent/40"
               }`}

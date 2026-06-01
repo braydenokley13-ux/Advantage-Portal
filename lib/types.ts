@@ -82,7 +82,7 @@ export type PitchStatus = "submitted" | "accepted" | "declined" | "converted";
 export interface Pitch {
   id: string;
   proposedHeadline: string;
-  sectionId: string;
+  sectionId?: string;
   /** Thesis / angle — the "what is this story actually about?". */
   angle: string;
   /** "Why now?" — peg, timeliness. */

@@ -17,13 +17,15 @@ import { TaskDrawer } from "@/components/task/task-drawer";
 import { useVisibleTasks } from "@/lib/hooks";
 import { useRole } from "@/lib/role-context";
 import { cn } from "@/lib/utils";
+import type { Task } from "@/lib/types";
 
 type View = "month" | "agenda";
+const EMPTY_TASKS: Task[] = [];
 
 export default function CalendarPage() {
   const { role } = useRole();
   const { data: baseTasksData } = useVisibleTasks();
-  const baseTasks = baseTasksData ?? [];
+  const baseTasks = baseTasksData ?? EMPTY_TASKS;
   const [view, setView] = useState<View>("month");
   const [cursor, setCursor] = useState<Date>(new Date());
   const [filters, setFilters] = useState<CalendarFilters>(DEFAULT_FILTERS);

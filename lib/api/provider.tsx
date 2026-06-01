@@ -60,7 +60,6 @@ export function ApiClientProvider({
   useEffect(() => {
     if (!warned.current && value.fallbackReason) {
       warned.current = true;
-      // eslint-disable-next-line no-console
       console.warn(`[advantage-portal] ${value.fallbackReason}`);
     }
   }, [value.fallbackReason]);

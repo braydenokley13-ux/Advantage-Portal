@@ -90,7 +90,7 @@ export default function AdminPage() {
           </div>
           <div className="text-xs text-muted-foreground leading-relaxed">
             <p className="text-foreground font-medium">
-              Admin vs Team — what's the difference?
+              Admin vs Team — what&apos;s the difference?
             </p>
             <p className="mt-0.5">
               Team is the read-only directory everyone can browse. Admin is
@@ -131,7 +131,7 @@ export default function AdminPage() {
             <Users className="h-4 w-4 text-muted-foreground" /> User management
           </CardTitle>
           <p className="text-xs text-muted-foreground mt-1">
-            Change a user's role or deactivate their account. Deactivation
+            Change a user&apos;s role or deactivate their account. Deactivation
             ends their session immediately.
           </p>
         </CardHeader>
@@ -292,7 +292,7 @@ function PermissionsMatrix() {
         </CardTitle>
         <p className="text-xs text-muted-foreground mt-1">
           Reference matrix. Permissions are enforced server-side once the
-          backend is wired in; today they're enforced by the in-memory
+          backend is wired in; today they&apos;re enforced by the in-memory
           permission helpers.
         </p>
       </CardHeader>

@@ -14,7 +14,7 @@ import { useNotifications } from "@/lib/hooks";
 import { useRole } from "@/lib/role-context";
 import { canModerate } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import type { NotificationKind } from "@/lib/types";
+import type { Notification, NotificationKind } from "@/lib/types";
 
 type Tab = "all" | "unread" | NotificationKind;
 
@@ -28,12 +28,13 @@ const TABS: { value: Tab; label: string }[] = [
   { value: "deadline", label: "Deadlines" },
   { value: "announcement", label: "Announcements" },
 ];
+const EMPTY_NOTIFICATIONS: Notification[] = [];
 
 export default function NotificationsPage() {
   const { user, role } = useRole();
   const { markAllRead } = useStore();
   const { data: notificationsData } = useNotifications();
-  const notifications = notificationsData ?? [];
+  const notifications = notificationsData ?? EMPTY_NOTIFICATIONS;
   const [tab, setTab] = useState<Tab>("all");
   // The deadline simulator fires team-wide notifications; only show it to
   // leaders/admins so writers can't accidentally spam the inbox.

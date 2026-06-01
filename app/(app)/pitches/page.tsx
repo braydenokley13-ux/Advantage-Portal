@@ -45,6 +45,10 @@ const STATUS_LABEL: Record<Pitch["status"], string> = {
   converted: "Assigned",
 };
 
+const EMPTY_SECTIONS: { id: string; name: string }[] = [];
+const EMPTY_PITCHES: Pitch[] = [];
+const EMPTY_ISSUES: { id: string; name: string }[] = [];
+
 export default function PitchesPage() {
   const { user, role } = useRole();
   // Source-of-truth reads via hooks (mock or supabase).
@@ -55,9 +59,9 @@ export default function PitchesPage() {
   // lookups (writer names, pitch → task → issue resolution).
   const { users, tasks: tasksForLookup } = useStore();
 
-  const sections = sectionsData ?? [];
-  const pitches = pitchesData ?? [];
-  const issues = issuesData ?? [];
+  const sections = sectionsData ?? EMPTY_SECTIONS;
+  const pitches = pitchesData ?? EMPTY_PITCHES;
+  const issues = issuesData ?? EMPTY_ISSUES;
 
   const isReviewer =
     role === "editor" || role === "leader" || role === "admin";
@@ -183,7 +187,7 @@ export default function PitchesPage() {
         )}
 
         <TabsContent value="submit" className="mt-4">
-          <PitchForm sections={sections} onSubmitted={refetchPitches} />
+          <PitchForm onSubmitted={refetchPitches} />
         </TabsContent>
 
         <TabsContent value="mine" className="mt-4 space-y-3">
@@ -245,18 +249,11 @@ export default function PitchesPage() {
   );
 }
 
-function PitchForm({
-  sections,
-  onSubmitted,
-}: {
-  sections: { id: string; name: string }[];
-  onSubmitted: () => void;
-}) {
+export function PitchForm({ onSubmitted }: { onSubmitted: () => void }) {
   const api = useApiClient();
   const { user } = useRole();
 
   const [headline, setHeadline] = useState("");
-  const [sectionId, setSectionId] = useState(sections[0]?.id ?? "");
   const [angle, setAngle] = useState("");
   const [whyNow, setWhyNow] = useState("");
   const [sources, setSources] = useState("");
@@ -270,8 +267,7 @@ function PitchForm({
   const valid =
     headline.trim().length > 6 &&
     angle.trim().length > 6 &&
-    whyNow.trim().length >= 8 &&
-    sectionId.length > 0;
+    whyNow.trim().length > 4;
 
   const todayIso = new Date().toISOString().slice(0, 10);
 
@@ -282,7 +278,6 @@ function PitchForm({
     try {
       await api.createPitch({
         proposedHeadline: headline.trim(),
-        sectionId,
         angle: angle.trim(),
         whyNow: whyNow.trim(),
         proposedSources: sources
@@ -323,7 +318,7 @@ function PitchForm({
         <CardTitle className="text-base">Pitch a story</CardTitle>
         <p className="text-xs text-muted-foreground">
           Strong pitches name the story, the angle, and why now. The more
-          honest you are about sources, the easier the editor's job.
+          honest you are about sources, the easier the editor&apos;s job.
         </p>
       </CardHeader>
       <CardContent className="px-5 pb-5 space-y-4">
@@ -337,35 +332,20 @@ function PitchForm({
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label>Section</Label>
-            <Select
-              value={sectionId}
-              onChange={(e) => setSectionId(e.target.value)}
-            >
-              {sections.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="p-words">
-              Expected word count{" "}
-              <span className="text-muted-foreground">(optional)</span>
-            </Label>
-            <Input
-              id="p-words"
-              type="number"
-              min={1}
-              step={50}
-              value={wordCount}
-              onChange={(e) => setWordCount(e.target.value)}
-              placeholder="e.g. 1200"
-            />
-          </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="p-words">
+            Expected word count{" "}
+            <span className="text-muted-foreground">(optional)</span>
+          </Label>
+          <Input
+            id="p-words"
+            type="number"
+            min={1}
+            step={50}
+            value={wordCount}
+            onChange={(e) => setWordCount(e.target.value)}
+            placeholder="e.g. 1200"
+          />
         </div>
 
         <div className="space-y-1.5">
@@ -431,7 +411,7 @@ function PitchForm({
 
         <div className="flex items-center justify-between border-t border-border pt-4">
           <p className="text-[11px] text-muted-foreground">
-            Editors decide together. You'll get a notification when there's
+            Editors decide together. You&apos;ll get a notification when there&apos;s
             news on this pitch.
           </p>
           <Button
@@ -445,7 +425,7 @@ function PitchForm({
         {error && <p className="text-xs text-red-600">{error}</p>}
         {submitted && (
           <p className="text-xs text-emerald-700">
-            Pitch sent to the editor queue. You'll see it in &ldquo;My pitches.&rdquo;
+            Pitch sent to the editor queue. You&apos;ll see it in “My pitches.”
           </p>
         )}
       </CardContent>

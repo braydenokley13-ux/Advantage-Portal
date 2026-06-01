@@ -32,6 +32,10 @@ covered by Next.js's default `.gitignore`).
 
 ```bash
 # .env.local — do NOT commit
+
+# Selects the data layer: "mock" (offline default) or "supabase".
+NEXT_PUBLIC_DATA_MODE=supabase
+
 NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOi...placeholder
 
@@ -41,18 +45,37 @@ SUPABASE_DB_URL=postgresql://postgres:<password>@db.your-project-ref.supabase.co
 
 # App-level
 NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# Email delivery for auth links and notification test emails
+GMAIL_USER=yourname@gmail.com
+GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx
+SUPABASE_AUTH_HOOK_SECRET=v1,whsec_placeholder
 ```
 
 | Variable | Where used | Public? |
 | --- | --- | --- |
+| `NEXT_PUBLIC_DATA_MODE` | selects the mock vs supabase adapter | yes |
 | `NEXT_PUBLIC_SUPABASE_URL` | browser + server | yes |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | browser + server | yes |
 | `SUPABASE_SERVICE_ROLE_KEY` | server / edge functions only | NO |
 | `SUPABASE_DB_URL` | migrations + cron | NO |
 | `NEXT_PUBLIC_APP_URL` | redirect URLs in auth flows | yes |
+| `GMAIL_USER` / `GMAIL_APP_PASSWORD` | SMTP email delivery | NO |
+| `SUPABASE_AUTH_HOOK_SECRET` | verifies Supabase Send Email hook calls | NO |
 
 For Vercel / Netlify / Render: add the same variables in the project's
-environment settings. Mirror the public/private split exactly.
+environment settings. Mirror the public/private split exactly, and set
+`NEXT_PUBLIC_DATA_MODE=supabase` for every environment you deploy
+(Production / Preview / Development).
+
+> **Build-time gotcha.** Every `NEXT_PUBLIC_*` value is inlined into the
+> JavaScript bundle when the app is *built* — it is not read at runtime.
+> Editing these in a host dashboard has no effect on an already-built
+> deployment. On Vercel you must trigger a fresh redeploy with **"Use
+> existing Build Cache" turned off**; a restart or instant rollback
+> reuses the old bundle and silently keeps the previous values. The
+> `/login` page shows a diagnostic banner whenever the running build
+> resolved to mock mode.
 
 ## 3. Install dependencies
 
@@ -85,6 +108,19 @@ npx supabase link --project-ref your-project-ref
    - `http://localhost:3000/auth/callback` (dev)
    - `https://your-domain.com/auth/callback` (prod)
    Add both in **Authentication → URL Configuration → Redirect URLs**.
+
+The app sends auth emails through its own routes:
+
+- `/api/auth/magic-link` creates and emails one-time magic links.
+- `/api/auth/signup` creates the Supabase signup link and emails it.
+- `/api/auth/password-reset` creates a recovery link that lands on
+  `/auth/update-password`.
+- `/api/auth/send-email` is the Supabase Send Email hook endpoint for
+  Supabase-generated auth emails.
+
+Set **Authentication → Hooks → Send Email** to
+`https://<your-domain>/api/auth/send-email`, generate a hook secret, and
+copy the full `v1,whsec_...` value into `SUPABASE_AUTH_HOOK_SECRET`.
 
 ### 4c. Invite flow assumptions
 
@@ -406,7 +442,7 @@ view and `tasks` (no filter) for the kanban board.
       anonymous client returns zero rows.
 - [ ] The Realtime channels listed in §10 deliver test events.
 - [ ] In `lib/api/provider.tsx`, the active client is the
-      `HttpApiClient` and `mode === "http"`.
+      `SupabaseApiClient` and `mode === "supabase"`.
 - [ ] `useSession()` returns a real Supabase user — confirm via the
       avatar menu.
 - [ ] `npm run dev` clicks through every page in the demo script with

@@ -10,7 +10,7 @@ export default function NotFound() {
         </div>
         <h1 className="text-xl font-semibold tracking-tight">Page not found</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          That URL doesn't exist in the Advantage portal. Try the dashboard or
+          That URL doesn&apos;t exist in the Advantage portal. Try the dashboard or
           your board.
         </p>
         <div className="mt-5 flex items-center justify-center gap-2">

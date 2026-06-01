@@ -2,7 +2,6 @@
 
 import {
   AlertTriangle,
-  Download,
   ExternalLink,
   FileText,
   FileType2,
@@ -15,7 +14,7 @@ import { InlineMarkdownViewer } from "./inline-markdown-viewer";
 import {
   cn,
   formatBytes,
-  googleDocId,
+  googleDocPreviewUrl,
   inferFileKind,
 } from "@/lib/utils";
 import { format } from "date-fns";
@@ -101,63 +100,32 @@ function FileCard({ submission }: { submission: Submission }) {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={(e) => {
-              e.preventDefault();
-              alert("Download is mocked — no file is actually fetched.");
-            }}
-          >
-            <Download className="h-3.5 w-3.5" /> Download
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={(e) => {
-              e.preventDefault();
-              alert("Open is mocked — no preview is rendered.");
-            }}
-          >
-            <ExternalLink className="h-3.5 w-3.5" /> Open
-          </Button>
-        </div>
       </header>
-      <FilePreviewPlaceholder kind={kind} filename={meta.filename} />
+      <FileMetaNote kind={kind} filename={meta.filename} />
     </article>
   );
 }
 
-function FilePreviewPlaceholder({
+function FileMetaNote({
   kind,
   filename,
 }: {
   kind: ReturnType<typeof inferFileKind>;
   filename: string;
 }) {
-  const message =
-    kind === "pdf"
-      ? "PDF preview placeholder. In production, an embedded reader would render here."
-      : kind === "docx"
-        ? "DOCX preview placeholder. In production, this would render a rich rendition of the document."
-        : kind === "image"
-          ? "Image preview placeholder."
-          : kind === "text"
-            ? "Plain-text preview placeholder."
-            : "Preview not available for this file type.";
-
   return (
-    <div className="bg-secondary/40 px-4 py-10">
-      <div className="mx-auto max-w-md rounded-lg border border-dashed border-border bg-background px-5 py-8 text-center">
+    <div className="bg-secondary/40 px-4 py-8">
+      <div className="mx-auto max-w-md rounded-lg border border-dashed border-border bg-background px-5 py-6 text-center">
         <p className="text-xs uppercase tracking-wide text-muted-foreground font-medium">
-          {kind} preview
+          {kind} file
         </p>
         <p className="mt-1.5 text-sm font-medium truncate" title={filename}>
           {filename}
         </p>
         <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-          {message}
+          This submission records the file’s details only — the file itself
+          isn’t stored in the portal. Share it with your reviewer directly, or
+          submit a Google Doc link for an inline preview.
         </p>
       </div>
     </div>
@@ -166,7 +134,7 @@ function FilePreviewPlaceholder({
 
 function GoogleDocCard({ submission }: { submission: Submission }) {
   const url = submission.content;
-  const docId = googleDocId(url);
+  const previewUrl = googleDocPreviewUrl(url);
 
   return (
     <article className="rounded-lg border border-border bg-card overflow-hidden shadow-soft">
@@ -193,20 +161,27 @@ function GoogleDocCard({ submission }: { submission: Submission }) {
         </div>
       </header>
 
-      <div className="bg-secondary/40 px-4 py-8">
-        <div className="mx-auto max-w-md rounded-lg border border-dashed border-border bg-background px-5 py-8 text-center">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground font-medium">
-            Google Doc embed
-          </p>
-          <p className="mt-1.5 text-sm font-medium">
-            {docId ? `doc/${docId.slice(0, 12)}…` : "Embed placeholder"}
-          </p>
-          <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-            In production, an inline iframe preview would render here. This MVP
-            does not perform external fetches.
-          </p>
+      {previewUrl ? (
+        <iframe
+          src={previewUrl}
+          title="Google Doc preview"
+          loading="lazy"
+          className="w-full h-[60vh] border-0 bg-background"
+        />
+      ) : (
+        <div className="bg-secondary/40 px-4 py-8">
+          <div className="mx-auto max-w-md rounded-lg border border-dashed border-border bg-background px-5 py-8 text-center">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground font-medium">
+              Google Doc
+            </p>
+            <p className="mt-1.5 text-sm font-medium">Link not recognised</p>
+            <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
+              This doesn’t look like a Google Doc URL. Open it directly to
+              review the document.
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="border-t border-border bg-amber-50/60 px-4 py-2.5 flex items-start gap-2">
         <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />

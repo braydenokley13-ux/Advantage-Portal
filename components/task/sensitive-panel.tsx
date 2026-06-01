@@ -140,7 +140,7 @@ export function SensitivePanel({
             : ""}
         </p>
         {f.decisionNote && (
-          <p className="text-xs italic">"{f.decisionNote}"</p>
+          <p className="text-xs italic">&quot;{f.decisionNote}&quot;</p>
         )}
 
         {canDecide && f.status === "open" && (

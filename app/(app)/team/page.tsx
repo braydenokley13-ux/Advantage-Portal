@@ -47,7 +47,7 @@ export default function TeamPage() {
             </p>
             <p className="mt-0.5">
               Browse everyone in the newsroom, see roles, status, and current
-              workload. To change someone's role or deactivate an account,
+              workload. To change someone&apos;s role or deactivate an account,
               head to{" "}
               <Link
                 href="/admin"

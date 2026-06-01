@@ -221,7 +221,7 @@ function EscalationCard({
         <p className="text-sm">{flag.notes}</p>
         {flag.decisionNote && (
           <p className="text-xs italic text-muted-foreground">
-            "{flag.decisionNote}"
+            &quot;{flag.decisionNote}&quot;
           </p>
         )}
         <div className="flex flex-wrap gap-2">

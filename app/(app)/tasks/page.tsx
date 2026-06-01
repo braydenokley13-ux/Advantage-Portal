@@ -20,6 +20,8 @@ import { useVisibleTasks } from "@/lib/hooks";
 import type { Task } from "@/lib/types";
 import { addDays, isPast, isWithinInterval } from "date-fns";
 
+const EMPTY_TASKS: Task[] = [];
+
 /**
  * Writer-focused "My Tasks" page. Shown to writers via the sidebar nav.
  * Other roles also land here gracefully if they navigate manually — they see
@@ -28,7 +30,7 @@ import { addDays, isPast, isWithinInterval } from "date-fns";
 export default function MyTasksPage() {
   const { user, role } = useRole();
   const { data } = useVisibleTasks();
-  const tasks = data ?? [];
+  const tasks = data ?? EMPTY_TASKS;
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
   const groups = useMemo(() => {

@@ -20,6 +20,14 @@ export const DEFAULT_FILTERS: CalendarFilters = {
   color: "all",
 };
 
+const TASK_STATUSES: TaskStatus[] = [
+  "not_started",
+  "in_progress",
+  "submitted",
+  "complete",
+];
+const TASK_COLORS: TaskColor[] = ["green", "amber", "red"];
+
 export function applyFilters(tasks: Task[], f: CalendarFilters): Task[] {
   return tasks.filter((t) => {
     if (f.writerId !== "all" && t.writerId !== f.writerId) return false;
@@ -53,7 +61,7 @@ export function FilterBar({
           <Select
             value={filters.writerId}
             onChange={(e) =>
-              onChange({ ...filters, writerId: e.target.value as any })
+              onChange({ ...filters, writerId: e.target.value })
             }
             className="h-8 text-xs min-w-[10rem]"
           >
@@ -73,7 +81,7 @@ export function FilterBar({
           <Select
             value={filters.editorId}
             onChange={(e) =>
-              onChange({ ...filters, editorId: e.target.value as any })
+              onChange({ ...filters, editorId: e.target.value })
             }
             className="h-8 text-xs min-w-[10rem]"
           >
@@ -91,19 +99,20 @@ export function FilterBar({
         <Label>Status</Label>
         <Select
           value={filters.status}
-          onChange={(e) =>
-            onChange({ ...filters, status: e.target.value as any })
-          }
+          onChange={(e) => {
+            const value = e.target.value;
+            if (value === "all" || TASK_STATUSES.includes(value as TaskStatus)) {
+              onChange({ ...filters, status: value as CalendarFilters["status"] });
+            }
+          }}
           className="h-8 text-xs min-w-[10rem]"
         >
           <option value="all">Any status</option>
-          {(["not_started", "in_progress", "submitted", "complete"] as TaskStatus[]).map(
-            (s) => (
-              <option key={s} value={s}>
-                {STATUS_LABELS[s]}
-              </option>
-            )
-          )}
+          {TASK_STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {STATUS_LABELS[s]}
+            </option>
+          ))}
         </Select>
       </div>
 
@@ -111,15 +120,20 @@ export function FilterBar({
         <Label>Color</Label>
         <Select
           value={filters.color}
-          onChange={(e) =>
-            onChange({ ...filters, color: e.target.value as any })
-          }
+          onChange={(e) => {
+            const value = e.target.value;
+            if (value === "all" || TASK_COLORS.includes(value as TaskColor)) {
+              onChange({ ...filters, color: value as CalendarFilters["color"] });
+            }
+          }}
           className="h-8 text-xs min-w-[8rem]"
         >
           <option value="all">Any color</option>
-          <option value="green">Green</option>
-          <option value="amber">Amber</option>
-          <option value="red">Red</option>
+          {TASK_COLORS.map((color) => (
+            <option key={color} value={color}>
+              {color[0].toUpperCase() + color.slice(1)}
+            </option>
+          ))}
         </Select>
       </div>
     </div>

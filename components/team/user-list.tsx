@@ -37,6 +37,10 @@ const ROLE_TONE: Record<Role, "default" | "secondary" | "warning" | "danger"> = 
 
 const ROLES: Role[] = ["writer", "editor", "leader", "admin"];
 
+function isRole(value: string): value is Role {
+  return ROLES.includes(value as Role);
+}
+
 export function UserList({
   canManage,
   showWorkload = false,
@@ -88,7 +92,10 @@ export function UserList({
         </div>
         <Select
           value={roleFilter}
-          onChange={(e) => setRoleFilter(e.target.value as any)}
+          onChange={(e) => {
+            const value = e.target.value;
+            if (value === "all" || isRole(value)) setRoleFilter(value);
+          }}
           className="w-[10rem]"
         >
           <option value="all">All roles</option>

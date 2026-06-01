@@ -31,6 +31,7 @@ import { TaskRow } from "@/components/task/task-row";
 import { TaskDrawer } from "@/components/task/task-drawer";
 import { TaskFormDialog } from "@/components/task/task-form-dialog";
 import { PageHeader } from "@/components/page-header";
+import { DashboardTour } from "@/components/onboarding/dashboard-tour";
 import { useRole } from "@/lib/role-context";
 import {
   useMessages,
@@ -45,10 +46,12 @@ import { isPast, isWithinInterval, addDays, format } from "date-fns";
 import type { Pitch, Task } from "@/lib/types";
 import { deriveStoryStage } from "@/lib/newsroom-stage";
 
+const EMPTY_TASKS: Task[] = [];
+
 export default function DashboardPage() {
   const { user, role } = useRole();
   const { data: visibleTasksData } = useVisibleTasks();
-  const myTasks = visibleTasksData ?? [];
+  const myTasks = visibleTasksData ?? EMPTY_TASKS;
   const { data: notificationsData } = useNotifications();
   const { data: usersData } = useUsers();
   const { data: messagesData } = useMessages();
@@ -92,9 +95,6 @@ export default function DashboardPage() {
         .slice(0, 5),
     [myTasks]
   );
-
-  const writerCount = users.filter((u) => u.role === "writer").length;
-  const editorCount = users.filter((u) => u.role === "editor").length;
 
   const myNotifications = notifications
     .filter((n) => n.userId === user.id)
@@ -333,6 +333,8 @@ export default function DashboardPage() {
         open={creating}
         onOpenChange={setCreating}
       />
+
+      <DashboardTour />
     </div>
   );
 }
@@ -833,7 +835,7 @@ function EditorNewsroomPanel({
         </CardHeader>
         <CardContent className="px-5 pb-5">
           <p className="text-3xl font-semibold tabular-nums">{copyDesk}</p>
-          <p className="text-xs text-muted-foreground">stories where you're copy editor</p>
+          <p className="text-xs text-muted-foreground">stories where you&apos;re copy editor</p>
         </CardContent>
       </Card>
       <Card>
@@ -842,7 +844,7 @@ function EditorNewsroomPanel({
         </CardHeader>
         <CardContent className="px-5 pb-5">
           <p className="text-3xl font-semibold tabular-nums">{factDesk}</p>
-          <p className="text-xs text-muted-foreground">stories where you're fact-checker</p>
+          <p className="text-xs text-muted-foreground">stories where you&apos;re fact-checker</p>
         </CardContent>
       </Card>
     </div>

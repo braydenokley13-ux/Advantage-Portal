@@ -3,17 +3,10 @@
  * project. Field naming bridges the snake_case Postgres columns and the
  * camelCase application contracts.
  *
- * Implementation status (per checkpoint 4 priority list):
- *   1. tasks                — fully implemented
- *   2. extension_requests   — fully implemented
- *   3. messages / convos    — fully implemented (read + send + pin + hide)
- *   4. moderation_reports   — fully implemented (list/create/update/bulk)
- *   5. notifications        — fully implemented (list / mark / push)
- *
- *   submissions / reviews / comments are best-effort: list works against
- *   the schema, create paths throw a clear "Not implemented in Supabase
- *   adapter yet" error so component callers can surface it. The mock
- *   path exercises the full UI flow today; this is the scoped follow-up.
+ * Every method of the `ApiClient` interface is implemented: tasks,
+ * extension requests, messages / conversations, moderation reports,
+ * notifications, submissions / reviews / comments, and the newsroom
+ * entities (sections, pitches, issues, slots, checklists, sensitive flags).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ApiError, type ApiClient } from "./client";
@@ -334,7 +327,7 @@ function rowToSection(r: SectionRow): SectionZ {
 type PitchRow = {
   id: string;
   proposed_headline: string;
-  section_id: string;
+  section_id: string | null;
   angle: string;
   why_now: string;
   proposed_sources: string[] | null;
@@ -354,7 +347,7 @@ function rowToPitch(r: PitchRow): PitchZ {
   return {
     id: r.id,
     proposedHeadline: r.proposed_headline,
-    sectionId: r.section_id,
+    sectionId: r.section_id ?? undefined,
     angle: r.angle,
     whyNow: r.why_now,
     proposedSources: r.proposed_sources ?? [],
@@ -456,6 +449,15 @@ const PITCH_COLUMNS =
   "id, proposed_headline, section_id, angle, why_now, proposed_sources, expected_word_count, deadline_pref, writer_note, writer_id, status, editor_note, decided_by_id, decided_at, task_id, created_at";
 
 const ISSUE_COLUMNS = "id, number, name, publish_date, status, notes";
+
+const SUBMISSION_COLUMNS =
+  "id, task_id, type, version, content, file_filename, file_mime_type, file_size_bytes, is_current, created_at";
+
+const REVIEW_COLUMNS =
+  "id, submission_id, reviewer_id, decision, notes, created_at";
+
+const COMMENT_COLUMNS =
+  "id, submission_id, author_id, body, inline, line_number, resolved, created_at";
 
 // ── adapter ───────────────────────────────────────────────────────────────
 export class SupabaseApiClient implements ApiClient {
@@ -658,6 +660,8 @@ export class SupabaseApiClient implements ApiClient {
     editorId?: string;
     deadline: string;
     color?: TaskZ["color"];
+    wordCountTarget?: number;
+    citationsRequired?: boolean;
   }): Promise<TaskZ> {
     const { data, error } = await this.sb
       .from("tasks")
@@ -668,6 +672,8 @@ export class SupabaseApiClient implements ApiClient {
         editor_id: input.editorId ?? null,
         deadline: input.deadline,
         color: input.color ?? "green",
+        word_count_target: input.wordCountTarget ?? null,
+        citations_required: input.citationsRequired ?? false,
       })
       .select(TASK_COLUMNS)
       .single();
@@ -684,6 +690,14 @@ export class SupabaseApiClient implements ApiClient {
       editorId?: string;
       deadline?: string;
       color?: TaskZ["color"];
+      wordCountTarget?: number;
+      citationsRequired?: boolean;
+      sectionId?: string;
+      issueId?: string;
+      copyEditorId?: string;
+      factCheckerId?: string;
+      slug?: string;
+      brief?: AssignmentBriefZ;
     }
   ): Promise<TaskZ> {
     const update: Record<string, unknown> = {};
@@ -693,6 +707,18 @@ export class SupabaseApiClient implements ApiClient {
     if (patch.editorId !== undefined) update.editor_id = patch.editorId;
     if (patch.deadline !== undefined) update.deadline = patch.deadline;
     if (patch.color !== undefined) update.color = patch.color;
+    if (patch.wordCountTarget !== undefined)
+      update.word_count_target = patch.wordCountTarget;
+    if (patch.citationsRequired !== undefined)
+      update.citations_required = patch.citationsRequired;
+    if (patch.sectionId !== undefined) update.section_id = patch.sectionId;
+    if (patch.issueId !== undefined) update.issue_id = patch.issueId;
+    if (patch.copyEditorId !== undefined)
+      update.copy_editor_id = patch.copyEditorId;
+    if (patch.factCheckerId !== undefined)
+      update.fact_checker_id = patch.factCheckerId;
+    if (patch.slug !== undefined) update.slug = patch.slug;
+    if (patch.brief !== undefined) update.assignment_brief = patch.brief;
 
     const { data, error } = await this.sb
       .from("tasks")
@@ -716,45 +742,171 @@ export class SupabaseApiClient implements ApiClient {
   }
 
   // ── Submissions / reviews / comments ───────────────────────────────────
+  //
+  // Notification fan-out (mock parity) is intentionally NOT done here: the
+  // `notifications` insert policy is admin-only, so per-event notifications
+  // are produced server-side (edge function / trigger), not the client.
   async listSubmissions(taskId?: string): Promise<SubmissionZ[]> {
-    let q = this.sb
-      .from("submissions")
-      .select(
-        "id, task_id, type, version, content, file_filename, file_mime_type, file_size_bytes, is_current, created_at"
-      );
+    let q = this.sb.from("submissions").select(SUBMISSION_COLUMNS);
     if (taskId) q = q.eq("task_id", taskId);
     const { data, error } = await q.order("version", { ascending: false });
     if (error) this.err("listSubmissions", error);
     return (data ?? []).map((r) => rowToSubmission(r as SubmissionRow));
   }
-  createSubmission() { return this.notSupported("createSubmission"); }
+
+  async createSubmission(input: {
+    taskId: string;
+    authorId: string;
+    type: SubmissionZ["type"];
+    content: string;
+    file?: { filename: string; mimeType: string; sizeBytes: number };
+  }): Promise<SubmissionZ> {
+    // Next version = current submission count for the task + 1.
+    const { count, error: cErr } = await this.sb
+      .from("submissions")
+      .select("id", { count: "exact", head: true })
+      .eq("task_id", input.taskId);
+    if (cErr) this.err("createSubmission(count)", cErr);
+    const version = (count ?? 0) + 1;
+
+    // Demote the previous current submission so the partial unique index
+    // `(task_id) where is_current` keeps holding.
+    const { error: dErr } = await this.sb
+      .from("submissions")
+      .update({ is_current: false })
+      .eq("task_id", input.taskId)
+      .eq("is_current", true);
+    if (dErr) this.err("createSubmission(demote)", dErr);
+
+    const isFile = input.type === "file";
+    const { data, error } = await this.sb
+      .from("submissions")
+      .insert({
+        task_id: input.taskId,
+        type: input.type,
+        version,
+        content: input.content,
+        file_filename: isFile ? input.file?.filename ?? null : null,
+        file_mime_type: isFile ? input.file?.mimeType ?? null : null,
+        file_size_bytes: isFile ? input.file?.sizeBytes ?? null : null,
+        is_current: true,
+      })
+      .select(SUBMISSION_COLUMNS)
+      .single();
+    if (error) this.err("createSubmission(insert)", error);
+    const submission = rowToSubmission(data as SubmissionRow);
+
+    // Advance the task into review (mock parity).
+    const { error: tErr } = await this.sb
+      .from("tasks")
+      .update({ status: "submitted", current_submission_id: submission.id })
+      .eq("id", input.taskId);
+    if (tErr) this.err("createSubmission(task)", tErr);
+
+    return submission;
+  }
 
   async listReviews(submissionId?: string): Promise<ReviewZ[]> {
-    let q = this.sb
-      .from("reviews")
-      .select(
-        "id, submission_id, reviewer_id, decision, notes, created_at"
-      );
+    let q = this.sb.from("reviews").select(REVIEW_COLUMNS);
     if (submissionId) q = q.eq("submission_id", submissionId);
     const { data, error } = await q.order("created_at", { ascending: false });
     if (error) this.err("listReviews", error);
     return (data ?? []).map((r) => rowToReview(r as ReviewRow));
   }
-  createReview() { return this.notSupported("createReview"); }
+
+  async createReview(input: {
+    submissionId: string;
+    reviewerId: string;
+    decision: ReviewZ["decision"];
+    notes?: string;
+  }): Promise<ReviewZ> {
+    const { data, error } = await this.sb
+      .from("reviews")
+      .insert({
+        submission_id: input.submissionId,
+        reviewer_id: input.reviewerId,
+        decision: input.decision,
+        notes: input.notes ?? null,
+      })
+      .select(REVIEW_COLUMNS)
+      .single();
+    if (error) this.err("createReview(insert)", error);
+    const review = rowToReview(data as ReviewRow);
+
+    // Roll the parent task's status from the decision (mock parity):
+    // approved/rejected close the task; changes_requested reopens it.
+    const { data: sub, error: sErr } = await this.sb
+      .from("submissions")
+      .select("task_id")
+      .eq("id", input.submissionId)
+      .maybeSingle();
+    if (sErr) this.err("createReview(submission)", sErr);
+    const taskId = (sub as { task_id: string } | null)?.task_id;
+    if (taskId) {
+      const nextStatus: TaskZ["status"] =
+        input.decision === "approved" || input.decision === "rejected"
+          ? "complete"
+          : "in_progress";
+      const { error: tErr } = await this.sb
+        .from("tasks")
+        .update({ status: nextStatus })
+        .eq("id", taskId);
+      if (tErr) this.err("createReview(task)", tErr);
+    }
+
+    return review;
+  }
 
   async listComments(submissionId?: string): Promise<CommentZ[]> {
-    let q = this.sb
-      .from("comments")
-      .select(
-        "id, submission_id, author_id, body, inline, line_number, resolved, created_at"
-      );
+    let q = this.sb.from("comments").select(COMMENT_COLUMNS);
     if (submissionId) q = q.eq("submission_id", submissionId);
     const { data, error } = await q.order("created_at");
     if (error) this.err("listComments", error);
     return (data ?? []).map((r) => rowToComment(r as CommentRow));
   }
-  createComment() { return this.notSupported("createComment"); }
-  toggleResolveComment() { return this.notSupported("toggleResolveComment"); }
+
+  async createComment(input: {
+    submissionId: string;
+    authorId: string;
+    body: string;
+    inline?: boolean;
+    lineNumber?: number;
+  }): Promise<CommentZ> {
+    // An explicit `inline` flag wins; otherwise a line number implies inline.
+    const isInline = input.inline ?? input.lineNumber !== undefined;
+    const { data, error } = await this.sb
+      .from("comments")
+      .insert({
+        submission_id: input.submissionId,
+        author_id: input.authorId,
+        body: input.body,
+        inline: isInline,
+        line_number: isInline ? input.lineNumber ?? null : null,
+        resolved: false,
+      })
+      .select(COMMENT_COLUMNS)
+      .single();
+    if (error) this.err("createComment", error);
+    return rowToComment(data as CommentRow);
+  }
+
+  async toggleResolveComment(id: string): Promise<CommentZ> {
+    const { data: existing, error: e1 } = await this.sb
+      .from("comments")
+      .select("resolved")
+      .eq("id", id)
+      .single();
+    if (e1) this.err("toggleResolveComment(read)", e1);
+    const next = !(existing as { resolved: boolean }).resolved;
+    const { data, error } = await this.sb
+      .from("comments")
+      .update({ resolved: next })
+      .eq("id", id)
+      .select(COMMENT_COLUMNS)
+      .single();
+    if (error) this.err("toggleResolveComment(update)", error);
+    return rowToComment(data as CommentRow);
+  }
 
   // ── Conversations + messages ───────────────────────────────────────────
   async listConversations(): Promise<ConversationZ[]> {
@@ -774,7 +926,36 @@ export class SupabaseApiClient implements ApiClient {
       memberIds: r.conversation_members.map((m) => m.user_id),
     }));
   }
-  createConversation() { return this.notSupported("createConversation"); }
+  async createConversation(input: {
+    kind: ConversationZ["kind"];
+    title: string;
+    memberIds: string[];
+  }): Promise<ConversationZ> {
+    const { data, error } = await this.sb
+      .from("conversations")
+      .insert({ kind: input.kind, title: input.title })
+      .select("id, kind, title, last_message_at")
+      .single();
+    if (error) this.err("createConversation", error);
+    const row = data as ConversationRow;
+
+    const members = input.memberIds.map((user_id) => ({
+      conversation_id: row.id,
+      user_id,
+    }));
+    const { error: mErr } = await this.sb
+      .from("conversation_members")
+      .insert(members);
+    if (mErr) this.err("createConversation(members)", mErr);
+
+    return {
+      id: row.id,
+      kind: row.kind,
+      title: row.title,
+      lastMessageAt: row.last_message_at ?? undefined,
+      memberIds: input.memberIds,
+    };
+  }
 
   async listMessages(conversationId?: string): Promise<MessageZ[]> {
     let q = this.sb
@@ -1121,7 +1302,7 @@ export class SupabaseApiClient implements ApiClient {
 
   async createPitch(input: {
     proposedHeadline: string;
-    sectionId: string;
+    sectionId?: string;
     angle: string;
     whyNow: string;
     proposedSources: string[];
@@ -1135,7 +1316,7 @@ export class SupabaseApiClient implements ApiClient {
       .from("pitches")
       .insert({
         proposed_headline: input.proposedHeadline,
-        section_id: input.sectionId,
+        section_id: input.sectionId ?? null,
         angle: input.angle,
         why_now: input.whyNow,
         proposed_sources: input.proposedSources ?? [],
