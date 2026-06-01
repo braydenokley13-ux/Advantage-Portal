@@ -327,7 +327,7 @@ function rowToSection(r: SectionRow): SectionZ {
 type PitchRow = {
   id: string;
   proposed_headline: string;
-  section_id: string;
+  section_id: string | null;
   angle: string;
   why_now: string;
   proposed_sources: string[] | null;
@@ -347,7 +347,7 @@ function rowToPitch(r: PitchRow): PitchZ {
   return {
     id: r.id,
     proposedHeadline: r.proposed_headline,
-    sectionId: r.section_id,
+    sectionId: r.section_id ?? undefined,
     angle: r.angle,
     whyNow: r.why_now,
     proposedSources: r.proposed_sources ?? [],
@@ -1248,7 +1248,7 @@ export class SupabaseApiClient implements ApiClient {
 
   async createPitch(input: {
     proposedHeadline: string;
-    sectionId: string;
+    sectionId?: string;
     angle: string;
     whyNow: string;
     proposedSources: string[];
@@ -1261,7 +1261,7 @@ export class SupabaseApiClient implements ApiClient {
       .from("pitches")
       .insert({
         proposed_headline: input.proposedHeadline,
-        section_id: input.sectionId,
+        section_id: input.sectionId ?? null,
         angle: input.angle,
         why_now: input.whyNow,
         proposed_sources: input.proposedSources ?? [],
