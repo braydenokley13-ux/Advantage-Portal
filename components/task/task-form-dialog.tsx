@@ -59,7 +59,12 @@ export function TaskFormDialog({
   const [wordCountTarget, setWordCountTarget] = useState<string>("");
   const [citationsRequired, setCitationsRequired] = useState<boolean>(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  // Re-seed the form only when the dialog opens or the target task changes.
+  // NOTE: depend on the stable `users` array, NOT the inline-filtered
+  // `writers` — `writers` is a fresh array every render, which previously
+  // re-ran this effect on every keystroke and wiped what the user typed.
   useEffect(() => {
     if (!open) return;
     if (mode === "edit" && task) {
@@ -74,9 +79,12 @@ export function TaskFormDialog({
       );
       setCitationsRequired(task.citationsRequired ?? false);
     } else {
+      const firstWriter = users.find(
+        (u) => u.role === "writer" && u.active !== false
+      );
       setTitle("");
       setInstructions("");
-      setWriterId(writers[0]?.id ?? "");
+      setWriterId(firstWriter?.id ?? "");
       setEditorId("");
       const inAWeek = new Date();
       inAWeek.setDate(inAWeek.getDate() + 7);
@@ -85,7 +93,8 @@ export function TaskFormDialog({
       setWordCountTarget("");
       setCitationsRequired(false);
     }
-  }, [open, mode, task, writers]);
+    setError(null);
+  }, [open, mode, task, users]);
 
   const todayIso = format(new Date(), "yyyy-MM-dd");
 
@@ -99,16 +108,17 @@ export function TaskFormDialog({
     // deadline doesn't block other field edits.
     (mode === "edit" || deadline >= todayIso);
 
-  function submit() {
+  async function submit() {
     if (!valid || !allowed || busy) return;
     setBusy(true);
+    setError(null);
     try {
       const iso = new Date(`${deadline}T17:00:00`).toISOString();
       const wc = wordCountTarget.trim()
         ? Math.max(1, Math.floor(Number(wordCountTarget)))
         : undefined;
       if (mode === "create") {
-        createTask({
+        await createTask({
           title: title.trim(),
           instructions: instructions.trim(),
           writerId,
@@ -119,7 +129,7 @@ export function TaskFormDialog({
           citationsRequired: citationsRequired || undefined,
         });
       } else if (task) {
-        updateTask(task.id, {
+        await updateTask(task.id, {
           title: title.trim(),
           instructions: instructions.trim(),
           writerId,
@@ -131,6 +141,16 @@ export function TaskFormDialog({
         });
       }
       onOpenChange(false);
+    } catch (e) {
+      // Surface the failure instead of closing the dialog as if it saved —
+      // otherwise the writer's edits silently vanish on a network/RLS error.
+      setError(
+        e instanceof Error
+          ? e.message
+          : mode === "create"
+            ? "Couldn't create that task. Please try again."
+            : "Couldn't save your changes. Please try again."
+      );
     } finally {
       setBusy(false);
     }
@@ -154,7 +174,9 @@ export function TaskFormDialog({
 
         <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto scroll-thin">
           <div className="space-y-1.5">
-            <Label htmlFor="task-title">Title</Label>
+            <Label htmlFor="task-title">
+              Title <span className="text-red-500">*</span>
+            </Label>
             <Input
               id="task-title"
               value={title}
@@ -164,7 +186,9 @@ export function TaskFormDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="task-instructions">Instructions</Label>
+            <Label htmlFor="task-instructions">
+              Instructions <span className="text-red-500">*</span>
+            </Label>
             <Textarea
               id="task-instructions"
               value={instructions}
@@ -176,7 +200,9 @@ export function TaskFormDialog({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label>Writer</Label>
+              <Label>
+                Writer <span className="text-red-500">*</span>
+              </Label>
               <Select
                 value={writerId}
                 onChange={(e) => setWriterId(e.target.value)}
@@ -210,7 +236,9 @@ export function TaskFormDialog({
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="task-deadline">Deadline</Label>
+              <Label htmlFor="task-deadline">
+                Deadline <span className="text-red-500">*</span>
+              </Label>
               <Input
                 id="task-deadline"
                 type="date"
@@ -270,6 +298,12 @@ export function TaskFormDialog({
             review. It does not block submission.
           </p>
         </div>
+
+        {error && (
+          <p className="px-5 -mt-1 pb-1 text-xs text-red-600" role="alert">
+            {error}
+          </p>
+        )}
 
         <DialogFooter>
           <Button
