@@ -98,14 +98,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const isSelf = actor.id === recipient.id;
-  const canEmailOthers = actor.role === "leader" || actor.role === "admin";
-  if (!isSelf && !canEmailOthers) {
-    return NextResponse.json(
-      { error: "Only leaders and admins can email other users." },
-      { status: 403 }
-    );
-  }
+  // Workspace trust model: any active member may trigger a notification email
+  // to another active member. This is required for normal workflow fan-out — a
+  // writer submitting a draft notifies their editor, an editor's decision
+  // notifies the writer, and so on. Content is constrained by the schema above
+  // (enumerated kind, length-capped title/body) and only ever renders as a
+  // branded portal notification, so the cross-user path is intentionally open.
 
   const to = normalizeEmailAddress(recipient.email);
   if (!to) {

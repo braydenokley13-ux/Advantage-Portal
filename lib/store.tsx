@@ -30,6 +30,7 @@ import {
 } from "./deadline-reminders";
 import { resolveDataMode, type DataMode } from "./supabase/env";
 import { getSupabaseBrowserClient } from "./supabase/browser";
+import { fanOutNotificationEmail } from "./email/notify-client";
 import { SupabaseApiClient } from "./api/supabase-adapter";
 import type { ApiClient } from "./api/client";
 import type {
@@ -1395,12 +1396,34 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         await refresh();
         return result;
       };
+      // Active users in a set of roles — recipients for "all editors / all
+      // leaders" style fan-outs (pitches, extensions, sensitive flags, reports).
+      const staff = (roles: Role[]): string[] =>
+        usersState
+          .filter((u) => u.active !== false && roles.includes(u.role))
+          .map((u) => u.id);
       return {
         ...collections,
         setTaskStatus: async (id, status) => {
           await persist(api.setTaskStatus(id, status));
         },
-        createTask: (input) => persist(api.createTask(input)),
+        createTask: async (input) => {
+          const task = await persist(api.createTask(input));
+          // Email fan-out mirrors the in-app notifications the mock store emits.
+          fanOutNotificationEmail([task.writerId], {
+            kind: "task_assigned",
+            title: `Assigned: ${task.title}`,
+            body: `Due ${new Date(task.deadline).toLocaleDateString()}`,
+          });
+          if (task.editorId) {
+            fanOutNotificationEmail([task.editorId], {
+              kind: "task_assigned",
+              title: `Editing: ${task.title}`,
+              body: "You are the assigned editor.",
+            });
+          }
+          return task;
+        },
         updateTask: async (id, patch) => {
           await persist(api.updateTask(id, patch));
         },
@@ -1413,9 +1436,48 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         togglePinMessage: async (id) => {
           await persist(api.togglePinMessage(id));
         },
-        createSubmission: (input) => persist(api.createSubmission(input)),
-        submitReview: (input) => persist(api.createReview(input)),
-        addComment: (input) => persist(api.createComment(input)),
+        createSubmission: async (input) => {
+          const submission = await persist(api.createSubmission(input));
+          const task = tasks.find((t) => t.id === input.taskId);
+          if (task?.editorId) {
+            fanOutNotificationEmail([task.editorId], {
+              kind: "submission",
+              title: `New submission: ${task.title}`,
+              body: `Version ${submission.version} ready for review.`,
+            });
+          }
+          return submission;
+        },
+        submitReview: async (input) => {
+          const review = await persist(api.createReview(input));
+          const sub = submissions.find((s) => s.id === input.submissionId);
+          const task = sub ? tasks.find((t) => t.id === sub.taskId) : undefined;
+          if (task) {
+            fanOutNotificationEmail([task.writerId], {
+              kind: "review_decision",
+              title:
+                input.decision === "approved"
+                  ? `Approved: ${task.title}`
+                  : input.decision === "rejected"
+                    ? `Rejected: ${task.title}`
+                    : `Changes requested: ${task.title}`,
+              body: input.notes,
+            });
+          }
+          return review;
+        },
+        addComment: async (input) => {
+          const comment = await persist(api.createComment(input));
+          const sub = submissions.find((s) => s.id === input.submissionId);
+          const task = sub ? tasks.find((t) => t.id === sub.taskId) : undefined;
+          if (task && task.writerId !== input.authorId) {
+            fanOutNotificationEmail([task.writerId], {
+              kind: "comment",
+              title: `New comment on ${task.title}`,
+            });
+          }
+          return comment;
+        },
         toggleResolveComment: async (id) => {
           await persist(api.toggleResolveComment(id));
         },
@@ -1439,22 +1501,93 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           } catch {
             /* RLS-rejected fan-out — delivered server-side in production */
           }
+          // The in-app row may be RLS-blocked above, but the email goes out
+          // through the service-role route regardless. This covers direct
+          // callers such as the announcements composer.
+          fanOutNotificationEmail([input.userId], {
+            kind: input.kind,
+            title: input.title,
+            body: input.body,
+          });
         },
-        requestExtension: (input) => persist(api.requestExtension(input)),
+        requestExtension: async (input) => {
+          const req = await persist(api.requestExtension(input));
+          fanOutNotificationEmail(staff(["leader", "admin"]), {
+            kind: "task_assigned",
+            title: "Extension requested",
+            body: input.reason.slice(0, 120),
+          });
+          return req;
+        },
         decideExtension: async (input) => {
+          const task = tasks.find((t) => t.id === input.taskId);
           await persist(api.decideExtension(input));
+          if (task?.extensionRequest) {
+            fanOutNotificationEmail([task.extensionRequest.requestedById], {
+              kind: "task_assigned",
+              title: input.approve
+                ? `Extension approved: ${task.title}`
+                : `Extension denied: ${task.title}`,
+            });
+          }
         },
-        createModerationReport: (input) =>
-          persist(api.createModerationReport(input)),
+        createModerationReport: async (input) => {
+          const report = await persist(api.createModerationReport(input));
+          fanOutNotificationEmail(
+            staff(["admin", "leader"]).filter((id) => id !== input.reporterId),
+            {
+              kind: "comment",
+              title: "Message reported",
+              body: input.reporterNote?.slice(0, 100),
+            }
+          );
+          return report;
+        },
         updateModerationReport: async (id, patch) => {
           await persist(api.updateModerationReport(id, patch));
         },
         hideMessage: async (id) => {
           await persist(api.hideMessage(id));
         },
-        createPitch: (input) => persist(api.createPitch(input)),
-        decidePitch: (input) => persist(api.decidePitch(input)),
-        convertPitch: (input) => persist(api.convertPitch(input)),
+        createPitch: async (input) => {
+          const pitch = await persist(api.createPitch(input));
+          fanOutNotificationEmail(staff(["editor", "leader"]), {
+            kind: "task_assigned",
+            title: "New pitch submitted",
+            body: input.proposedHeadline,
+          });
+          return pitch;
+        },
+        decidePitch: async (input) => {
+          const pitch = await persist(api.decidePitch(input));
+          if (pitch) {
+            fanOutNotificationEmail([pitch.writerId], {
+              kind: "review_decision",
+              title: input.accept
+                ? `Pitch accepted: ${pitch.proposedHeadline}`
+                : `Pitch declined: ${pitch.proposedHeadline}`,
+              body: input.note,
+            });
+          }
+          return pitch;
+        },
+        convertPitch: async (input) => {
+          const task = await persist(api.convertPitch(input));
+          if (task) {
+            fanOutNotificationEmail([task.writerId], {
+              kind: "task_assigned",
+              title: `Assigned: ${task.title}`,
+              body: `Due ${new Date(task.deadline).toLocaleDateString()}`,
+            });
+            if (task.editorId) {
+              fanOutNotificationEmail([task.editorId], {
+                kind: "task_assigned",
+                title: `Editing: ${task.title}`,
+              });
+            }
+          }
+          return task;
+        },
         addIssueSlot: (input) => persist(api.upsertIssueSlot(input)),
         removeIssueSlot: async (id) => {
           await persist(api.removeIssueSlot(id));
@@ -1469,9 +1602,31 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         toggleChecklistItem: async (input) => {
           await persist(api.updateChecklistItem(input));
         },
-        raiseSensitiveFlag: (input) => persist(api.raiseSensitiveFlag(input)),
+        raiseSensitiveFlag: async (input) => {
+          const flag = await persist(api.raiseSensitiveFlag(input));
+          fanOutNotificationEmail(
+            staff(["leader", "admin"]).filter((id) => id !== input.raisedById),
+            {
+              kind: "review_decision",
+              title: "Sensitive story flagged",
+              body: input.notes.slice(0, 120),
+            }
+          );
+          return flag;
+        },
         decideSensitiveFlag: async (input) => {
+          const task = tasks.find((t) => t.id === input.taskId);
           await persist(api.decideSensitiveFlag(input));
+          if (task) {
+            fanOutNotificationEmail([task.writerId], {
+              kind: "review_decision",
+              title:
+                input.status === "cleared"
+                  ? `Sensitive review cleared: ${task.title}`
+                  : `Sensitive review on hold: ${task.title}`,
+              body: input.note,
+            });
+          }
         },
       };
     }

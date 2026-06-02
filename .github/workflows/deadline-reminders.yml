@@ -1,0 +1,49 @@
+# Free deadline-reminder scheduler.
+#
+# Vercel Hobby (free) cron runs at most once per day, so it can miss a task's
+# exact 7d/3d/1d threshold if a single run slips. GitHub Actions scheduled
+# workflows are free and can run hourly, which reliably hits every day boundary.
+#
+# Setup (Repo → Settings → Secrets and variables → Actions):
+#   DEADLINE_CRON_URL = https://<your-app>/api/cron/deadline-reminders
+#   CRON_SECRET       = the same value set in the app environment
+#
+# The job no-ops (and does not fail) when the secrets are absent, so forks and
+# unconfigured clones stay green.
+name: Deadline reminders
+
+on:
+  schedule:
+    # Top of every hour (UTC). GitHub may delay runs under load; that's fine —
+    # the endpoint de-dupes, so a late or repeated run never double-sends.
+    - cron: "0 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: deadline-reminders
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger deadline-reminder scan
+        env:
+          DEADLINE_CRON_URL: ${{ secrets.DEADLINE_CRON_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$DEADLINE_CRON_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "DEADLINE_CRON_URL / CRON_SECRET not configured — skipping."
+            exit 0
+          fi
+          code=$(curl -sS -o /tmp/out.json -w "%{http_code}" \
+            -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$DEADLINE_CRON_URL")
+          echo "HTTP $code"
+          cat /tmp/out.json || true
+          echo
+          if [ "$code" -ge 400 ]; then
+            echo "::error::Deadline reminder endpoint returned HTTP $code"
+            exit 1
+          fi
