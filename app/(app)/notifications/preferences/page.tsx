@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { PageHeader } from "@/components/page-header";
 import { NOTIFICATION_META, NOTIFICATION_ORDER } from "@/lib/notifications";
+import { EMAIL_DEFAULTS } from "@/lib/notification-policy";
 import { useRole } from "@/lib/role-context";
 import { useSession } from "@/lib/session";
 import type { NotificationKind } from "@/lib/types";
@@ -18,7 +19,7 @@ type Prefs = Record<NotificationKind, Record<Channel, boolean>>;
 const CHANNELS: { key: Channel; label: string; help: string }[] = [
   { key: "in_app", label: "In-app", help: "Bell and inbox" },
   { key: "push", label: "Push", help: "Mobile + web push" },
-  { key: "email", label: "Email", help: "Daily digest" },
+  { key: "email", label: "Email", help: "Instant email" },
 ];
 
 function defaultPrefs(): Prefs {
@@ -27,7 +28,9 @@ function defaultPrefs(): Prefs {
     p[kind] = {
       in_app: true,
       push: kind !== "task_complete",
-      email: kind === "deadline" || kind === "announcement",
+      // Email defaults are shared with the server so the toggles below match
+      // exactly which events actually send mail.
+      email: EMAIL_DEFAULTS[kind],
     };
   }
   return p;
@@ -217,6 +220,8 @@ export default function NotificationPreferencesPage() {
       <div className="rounded-lg border border-border bg-secondary/40 p-4 space-y-1">
         <p className="text-xs font-medium">How we keep this quiet</p>
         <p className="text-xs text-muted-foreground leading-relaxed">
+          Important events &mdash; assignments, deadlines, submissions, feedback,
+          decisions, and announcements &mdash; send an instant email by default.
           Identical alerts are deduped within a short window so you don&apos;t get
           pinged three times for the same thing across in-app, push, and email.
           You can mute any event type per channel above. Preferences are stored
