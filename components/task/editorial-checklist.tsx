@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { useApiClient } from "@/lib/api/provider";
 import { useEditorialChecklist } from "@/lib/hooks";
 import { useRole } from "@/lib/role-context";
-import { defaultChecklistItems } from "@/lib/mock-data";
+import { defaultChecklistItems } from "@/lib/checklist-template";
 import type { ChecklistGroup, ChecklistItem, Task } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -27,8 +27,8 @@ export function EditorialChecklist({ task }: { task: Task }) {
   const { data: list, refetch } = useEditorialChecklist(task.id);
   const { user, role } = useRole();
 
-  // The legacy mock-data ids stay in use for both data modes; supabase
-  // sections use the same slugs so we resolve via slug too.
+  // Section ids/slugs drive which checklist groups apply: business/markets
+  // pull the business group; an open sensitive flag pulls the sensitive group.
   const isBusiness =
     task.sectionId === "sec-business" ||
     task.sectionId === "sec-markets";

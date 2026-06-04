@@ -2,9 +2,9 @@
  * Edge middleware — refreshes the Supabase session on every request and
  * bounces unauthenticated traffic away from the protected app shell.
  *
- * No-op in mock mode: when `NEXT_PUBLIC_DATA_MODE` is not "supabase" (or the
- * credentials are missing) the request passes straight through so the
- * offline demo keeps working.
+ * Passes through untouched when the Supabase credentials are missing, so a
+ * misconfigured deployment surfaces a clear error in-app rather than erroring
+ * at the edge.
  */
 import { type NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
@@ -28,7 +28,7 @@ const PROTECTED_PREFIXES = [
 
 export async function middleware(req: NextRequest) {
   const resolved = resolveDataMode();
-  if (resolved.mode !== "supabase" || !resolved.config) {
+  if (!resolved.config) {
     return NextResponse.next();
   }
 

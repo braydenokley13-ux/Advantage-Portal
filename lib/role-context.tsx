@@ -1,12 +1,10 @@
 "use client";
 
 /**
- * `useRole` is a thin compatibility layer over the new `useSession` model.
+ * `useRole` is a thin compatibility layer over the `useSession` model.
  *
- * Existing UI imports `useRole().user / role / setUserId / allUsers`. Those
- * keep working — internally they read from the session. Switching demo users
- * routes through `signInAsDemoUser` so the persistence + safety guarantees of
- * the session apply uniformly.
+ * Existing UI imports `useRole().user / role`. Those keep working — internally
+ * they read from the session.
  *
  * NEW code should call `useSession()` directly.
  */
@@ -17,8 +15,6 @@ import type { Role, User } from "./types";
 type RoleContextValue = {
   user: User;
   role: Role;
-  setUserId: (id: string) => void;
-  allUsers: User[];
 };
 
 const RoleContext = createContext<RoleContextValue | null>(null);
@@ -31,8 +27,6 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     return {
       user: session.currentUser,
       role: session.currentUser.role,
-      setUserId: session.signInAsDemoUser,
-      allUsers: session.allUsers,
     };
   }, [session]);
 

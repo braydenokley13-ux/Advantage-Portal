@@ -17,10 +17,7 @@ import { UserList } from "@/components/team/user-list";
 import { useRole } from "@/lib/role-context";
 import { canManageUsers } from "@/lib/permissions";
 import { useStore } from "@/lib/store";
-import {
-  useApiFallbackReason,
-  useApiMode,
-} from "@/lib/api/provider";
+import { getSupabaseConfigStatus } from "@/lib/supabase/env";
 import { format, formatDistanceToNowStrict } from "date-fns";
 import type { Role } from "@/lib/types";
 
@@ -191,35 +188,21 @@ export default function AdminPage() {
 }
 
 /**
- * Surface the active ApiClient adapter so QA can tell at a glance whether
- * a given session is exercising mock-mode (no persistence on reload) or
- * Supabase mode (persists). When supabase mode was requested but the
- * provider downgraded to mock (missing/invalid creds), the fallback
- * reason is shown alongside.
+ * Surface the Supabase connection status so admins can confirm at a glance
+ * that writes are persisting to the configured Postgres project — and see a
+ * clear warning if the environment is misconfigured.
  */
 function DataModeBadge() {
-  const mode = useApiMode();
-  const fallback = useApiFallbackReason();
-  const tone =
-    mode === "supabase"
-      ? "bg-emerald-50 border-emerald-200"
-      : fallback
-        ? "bg-amber-50 border-amber-200"
-        : "bg-secondary border-border";
-  const label =
-    mode === "supabase"
-      ? "Supabase mode — writes persist to the configured Postgres project."
-      : fallback
-        ? "Supabase requested but downgraded to mock — see warning."
-        : "Mock mode — in-memory store, state resets on reload.";
-  const tag =
-    mode === "supabase"
-      ? "Supabase"
-      : fallback
-        ? "Mock (fallback)"
-        : "Mock";
-  const tagTone: "success" | "warning" | "secondary" =
-    mode === "supabase" ? "success" : fallback ? "warning" : "secondary";
+  const status = getSupabaseConfigStatus();
+  const tone = status.configured
+    ? "bg-emerald-50 border-emerald-200"
+    : "bg-amber-50 border-amber-200";
+  const label = status.configured
+    ? `Connected to ${status.urlHost ?? "the configured Supabase project"} — writes persist to Postgres.`
+    : "Supabase is not configured — the portal cannot read or write data.";
+  const tagTone: "success" | "warning" = status.configured
+    ? "success"
+    : "warning";
   return (
     <Card>
       <CardContent
@@ -230,12 +213,14 @@ function DataModeBadge() {
         </div>
         <div className="text-xs text-muted-foreground leading-relaxed flex-1">
           <div className="flex items-center gap-2">
-            <p className="text-foreground font-medium">Data mode</p>
-            <Badge variant={tagTone}>{tag}</Badge>
+            <p className="text-foreground font-medium">Data backend</p>
+            <Badge variant={tagTone}>
+              {status.configured ? "Supabase" : "Not configured"}
+            </Badge>
           </div>
           <p className="mt-0.5">{label}</p>
-          {fallback && (
-            <p className="mt-1 text-amber-700">{fallback}</p>
+          {!status.configured && status.reason && (
+            <p className="mt-1 text-amber-700">{status.reason}</p>
           )}
         </div>
       </CardContent>

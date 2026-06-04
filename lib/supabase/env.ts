@@ -1,28 +1,29 @@
 /**
  * Centralised env access for Supabase. Importing from here ensures the
- * data-mode switch and credential checks happen in exactly one place.
+ * credential checks happen in exactly one place.
  *
- * The portal can run in two data modes:
- *   - "mock"     → in-memory store (offline, default)
- *   - "supabase" → SupabaseAdapter against the configured project
+ * The portal runs against Supabase only. When `NEXT_PUBLIC_SUPABASE_URL` and
+ * `NEXT_PUBLIC_SUPABASE_ANON_KEY` are present and well-formed the app talks to
+ * the configured project; when they are missing or malformed the app fails
+ * loud (the /login page and admin surface explain what is misconfigured)
+ * rather than silently serving throwaway in-memory data.
  *
- * If `NEXT_PUBLIC_DATA_MODE=supabase` is set but URL/anon key are missing
- * or malformed, the resolver downgrades to "mock" and explains why so the
- * dev server stays usable. `getDataModeDiagnostics()` exposes the full
- * picture for UI surfaces (the mock-mode banner on /login, the admin
- * data-mode card).
- *
- * Reminder: every NEXT_PUBLIC_* value is inlined into the browser bundle
- * at BUILD time. Changing one on a host like Vercel has no effect until a
- * fresh, cache-free build runs — see docs/supabase-setup-guide.md.
+ * Reminder: every NEXT_PUBLIC_* value is inlined into the browser bundle at
+ * BUILD time. Changing one on a host like Vercel has no effect until a fresh,
+ * cache-free build runs — see docs/supabase-setup-guide.md.
  */
 
-export type DataMode = "mock" | "supabase";
+/**
+ * Retained for the many call sites that read `resolved.mode`. The portal is
+ * Supabase-only now, so this is a single-value alias.
+ */
+export type DataMode = "supabase";
 
 export type ResolvedDataMode = {
   mode: DataMode;
-  /** When mode === "mock", reason explains any forced downgrade. */
+  /** Explains why config is absent when `config` is undefined. */
   reason?: string;
+  /** Present only when Supabase credentials are valid. */
   config?: {
     url: string;
     anonKey: string;
@@ -30,24 +31,17 @@ export type ResolvedDataMode = {
 };
 
 /**
- * Full env/data-mode picture for diagnostics UI. Contains no secrets:
- * only booleans and the public Supabase host (NEXT_PUBLIC_SUPABASE_URL is
- * shipped to the browser by design). The service-role key is never read.
+ * Public-safe Supabase configuration status for diagnostics UI (the /login
+ * config notice, the admin data card). Contains no secrets — only booleans
+ * and the public Supabase host.
  */
-export type DataModeDiagnostics = {
-  /** Normalised value of NEXT_PUBLIC_DATA_MODE ("mock" when unset). */
-  requestedMode: string;
-  /** Mode actually in effect after credential validation. */
-  resolvedMode: DataMode;
-  /** True when "supabase" was requested but the app fell back to mock. */
-  downgraded: boolean;
-  /** Human-readable explanation when downgraded or misconfigured. */
+export type SupabaseConfigStatus = {
+  /** True when both URL and anon key are present and the URL is valid. */
+  configured: boolean;
+  /** Human-readable explanation when not configured. */
   reason?: string;
-  /** NEXT_PUBLIC_SUPABASE_URL is set and non-empty. */
   hasUrl: boolean;
-  /** NEXT_PUBLIC_SUPABASE_ANON_KEY is set and non-empty. */
   hasAnonKey: boolean;
-  /** The URL parses and looks like a Supabase project URL. */
   urlLooksValid: boolean;
   /** Public Supabase host — present only when the URL is valid. */
   urlHost?: string;
@@ -56,7 +50,7 @@ export type DataModeDiagnostics = {
 /**
  * Normalise a raw env value, tolerating the two most common dashboard
  * mistakes: surrounding whitespace and a wrapping pair of quotes (e.g.
- * pasting `"supabase"` instead of `supabase` into a host's env UI).
+ * pasting `"https://x.supabase.co"` instead of the bare value).
  */
 function clean(raw: string | undefined): string | undefined {
   if (typeof raw !== "string") return undefined;
@@ -68,7 +62,6 @@ function clean(raw: string | undefined): string | undefined {
 }
 
 type EnvSnapshot = {
-  requestedMode: string;
   url?: string;
   anonKey?: string;
   urlLooksValid: boolean;
@@ -81,10 +74,7 @@ function readEnv(): EnvSnapshot {
   // bundle when the property is referenced literally. A dynamic
   // `process.env[name]` lookup is NOT inlined — on the client it reads an
   // empty polyfill object and resolves to undefined, which would silently
-  // pin the whole app to mock mode no matter how the host is configured.
-  const requestedMode = (
-    clean(process.env.NEXT_PUBLIC_DATA_MODE) ?? "mock"
-  ).toLowerCase();
+  // make the app think Supabase is unconfigured no matter how the host is set.
   const url = clean(process.env.NEXT_PUBLIC_SUPABASE_URL);
   const anonKey = clean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
@@ -92,8 +82,8 @@ function readEnv(): EnvSnapshot {
   let urlHost: string | undefined;
   if (url) {
     try {
-      // Cheap sanity check on the URL shape; avoids surfacing cryptic
-      // errors deep inside @supabase/supabase-js when the URL is mistyped.
+      // Cheap sanity check on the URL shape; avoids surfacing cryptic errors
+      // deep inside @supabase/supabase-js when the URL is mistyped.
       const host = new URL(url).hostname;
       if (host.includes("supabase.")) {
         urlLooksValid = true;
@@ -104,38 +94,18 @@ function readEnv(): EnvSnapshot {
     }
   }
 
-  return { requestedMode, url, anonKey, urlLooksValid, urlHost };
+  return { url, anonKey, urlLooksValid, urlHost };
 }
 
-/**
- * Derive the full diagnostics object from an env snapshot. Pure — safe to
- * call during render on both the server and the client.
- */
-function diagnose(env: EnvSnapshot): DataModeDiagnostics {
+/** Derive the public config status from an env snapshot. Pure, client-safe. */
+function diagnose(env: EnvSnapshot): SupabaseConfigStatus {
   const base = {
-    requestedMode: env.requestedMode,
     hasUrl: !!env.url,
     hasAnonKey: !!env.anonKey,
     urlLooksValid: env.urlLooksValid,
     urlHost: env.urlHost,
   };
 
-  // Not asking for supabase → plain mock.
-  if (env.requestedMode !== "supabase") {
-    // A value that is neither "mock" nor "supabase" is almost certainly a
-    // typo; surface it rather than silently running mock.
-    if (env.requestedMode !== "mock") {
-      return {
-        ...base,
-        resolvedMode: "mock",
-        downgraded: false,
-        reason: `NEXT_PUBLIC_DATA_MODE is "${env.requestedMode}", which is not a recognised value. Expected "mock" or "supabase" — running in mock mode.`,
-      };
-    }
-    return { ...base, resolvedMode: "mock", downgraded: false };
-  }
-
-  // supabase requested — credentials must be present and well-formed.
   if (!env.url || !env.anonKey) {
     const missing = [
       !env.url && "NEXT_PUBLIC_SUPABASE_URL",
@@ -143,53 +113,48 @@ function diagnose(env: EnvSnapshot): DataModeDiagnostics {
     ].filter(Boolean) as string[];
     return {
       ...base,
-      resolvedMode: "mock",
-      downgraded: true,
-      reason: `NEXT_PUBLIC_DATA_MODE=supabase, but ${missing.join(" and ")} ${
+      configured: false,
+      reason: `${missing.join(" and ")} ${
         missing.length > 1 ? "are" : "is"
-      } not set — falling back to mock.`,
+      } not set. Set the Supabase URL and anon key and redeploy with a fresh build.`,
     };
   }
 
   if (!env.urlLooksValid) {
     return {
       ...base,
-      resolvedMode: "mock",
-      downgraded: true,
+      configured: false,
       reason:
-        "NEXT_PUBLIC_DATA_MODE=supabase, but NEXT_PUBLIC_SUPABASE_URL does not look like a Supabase project URL (expected https://<project-ref>.supabase.co) — falling back to mock.",
+        "NEXT_PUBLIC_SUPABASE_URL does not look like a Supabase project URL (expected https://<project-ref>.supabase.co).",
     };
   }
 
-  return { ...base, resolvedMode: "supabase", downgraded: false };
+  return { ...base, configured: true };
 }
 
 /**
- * Full env/data-mode diagnostics. Used by UI surfaces (the /login
- * mock-mode banner, the admin data-mode card) to explain exactly what is
- * configured and why. Pure, client-safe, and contains no secrets.
+ * Public Supabase config status. Used by UI surfaces (the /login config
+ * notice, the admin data card) to explain exactly what is configured and
+ * why. Pure, client-safe, and contains no secrets.
  */
-export function getDataModeDiagnostics(): DataModeDiagnostics {
+export function getSupabaseConfigStatus(): SupabaseConfigStatus {
   return diagnose(readEnv());
 }
 
 /**
- * Resolve the active data mode and, when running against Supabase, the
- * validated credentials. Every adapter, the session provider, and the
- * edge middleware funnel through this one function.
+ * Resolve the Supabase config. Every adapter, the session provider, and the
+ * edge middleware funnel through this one function. `config` is present only
+ * when the credentials are valid; callers short-circuit on its absence.
  */
 export function resolveDataMode(): ResolvedDataMode {
   const env = readEnv();
   const diag = diagnose(env);
-  if (diag.resolvedMode === "supabase") {
-    // diagnose() only resolves to "supabase" once url + anonKey are both
-    // present, so these assertions hold.
-    return {
-      mode: "supabase",
-      config: { url: env.url!, anonKey: env.anonKey! },
-    };
+  if (diag.configured) {
+    // diagnose() only reports configured once url + anonKey are both present
+    // and the URL is valid, so these assertions hold.
+    return { mode: "supabase", config: { url: env.url!, anonKey: env.anonKey! } };
   }
-  return diag.reason ? { mode: "mock", reason: diag.reason } : { mode: "mock" };
+  return { mode: "supabase", reason: diag.reason };
 }
 
 /**
@@ -199,7 +164,7 @@ export function resolveDataMode(): ResolvedDataMode {
  * NEXT_PUBLIC_ prefix on the underlying env var.
  */
 export function getServiceRoleKey(): string | undefined {
-  // Static, non-public access: the client bundle inlines this as
-  // undefined, so the service-role key never ships to the browser.
+  // Static, non-public access: the client bundle inlines this as undefined,
+  // so the service-role key never ships to the browser.
   return clean(process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
