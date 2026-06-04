@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * Browser-side Supabase client. Returns null when env vars are absent or
- * data mode is "mock" so callers can short-circuit cleanly without
- * pulling Supabase into the bundle's hot path.
+ * Browser-side Supabase client. Returns null when the env vars are absent or
+ * malformed so callers can short-circuit cleanly and surface the
+ * misconfiguration instead of crashing deep inside @supabase/supabase-js.
  */
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";

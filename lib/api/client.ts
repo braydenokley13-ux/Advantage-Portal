@@ -1,13 +1,10 @@
 /**
  * Typed API surface for the journal platform.
  *
- * Two adapters implement this interface:
- *   - MockAdapter (lib/api/mock-adapter.tsx): delegates to the in-memory store
- *   - HttpAdapter (lib/api/http-adapter.ts): placeholder for a real backend
- *
- * UI components should call methods on this interface (via the future hooks
- * layer), NOT touch the store directly. The active adapter is injected via
- * `ApiClientProvider` (lib/api/provider.tsx).
+ * `SupabaseApiClient` (lib/api/supabase-adapter.ts) implements this interface
+ * against the configured Supabase project. UI components call these methods
+ * via the hooks layer (lib/hooks) or the store, NOT the database directly. The
+ * client is injected via `ApiClientProvider` (lib/api/provider.tsx).
  */
 import type {
   CommentCreateInputZ,
@@ -177,11 +174,6 @@ export interface ApiClient {
   raiseSensitiveFlag(input: SensitiveFlagRaiseInputZ): Promise<SensitiveFlagZ>;
   decideSensitiveFlag(input: SensitiveFlagDecideInputZ): Promise<SensitiveFlagZ>;
 }
-
-/**
- * Tag describing which adapter is active. Useful for diagnostics in the UI.
- */
-export type ApiAdapterMode = "mock" | "supabase";
 
 export class ApiError extends Error {
   constructor(

@@ -29,7 +29,7 @@ import type {
   UserZ,
 } from "@/lib/contracts";
 import type { ChecklistItem, ExtensionRequest } from "@/lib/types";
-import { defaultChecklistItems } from "@/lib/mock-data";
+import { defaultChecklistItems } from "@/lib/checklist-template";
 
 // ── row → contract translators ───────────────────────────────────────────
 type UserRow = {
@@ -473,13 +473,6 @@ export class SupabaseApiClient implements ApiClient {
       }`,
       500,
       cause
-    );
-  }
-
-  private notSupported(method: string): never {
-    throw new ApiError(
-      `SupabaseApiClient.${method} not implemented yet — switch NEXT_PUBLIC_DATA_MODE to "mock" or finish the migration.`,
-      501
     );
   }
 

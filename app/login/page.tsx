@@ -2,24 +2,14 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { LogIn, Mail, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Mail, ShieldCheck } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MockModeBanner } from "@/components/shell/mock-mode-banner";
-import { isDemoMode, useDemoUsers, useSession } from "@/lib/session";
-import { cn, initials } from "@/lib/utils";
-import type { Role } from "@/lib/types";
-
-const ROLE_TONE: Record<Role, "default" | "secondary" | "warning" | "danger"> = {
-  writer: "default",
-  editor: "secondary",
-  leader: "warning",
-  admin: "danger",
-};
+import { useSession } from "@/lib/session";
+import { getSupabaseConfigStatus } from "@/lib/supabase/env";
+import { cn } from "@/lib/utils";
 
 const AUTH_ERROR_MESSAGES: Record<string, string> = {
   auth_link_invalid:
@@ -60,87 +50,43 @@ function LoginInner() {
 
   return (
     <LoginShell>
-      <MockModeBanner />
-      {session.mode === "supabase" ? (
-        <SupabaseLogin next={next} />
-      ) : (
-        <DemoLogin next={next} />
-      )}
+      <SupabaseConfigNotice />
+      <SupabaseLogin next={next} />
     </LoginShell>
   );
 }
 
-function DemoLogin({ next }: { next: string }) {
-  const router = useRouter();
-  const session = useSession();
-  const demoUsers = useDemoUsers();
-  // Demo affordances are gated behind NEXT_PUBLIC_DEMO_MODE so the user
-  // picker can never be shipped as a production sign-in path.
-  const demoEnabled = isDemoMode();
-
-  function pick(userId: string) {
-    if (!demoEnabled) return;
-    session.signInAsDemoUser(userId);
-    router.replace(next);
-  }
-
-  if (!demoEnabled) {
-    return (
-      <Card>
-        <CardContent className="p-6 text-center space-y-3">
-          <p className="text-sm font-medium">Sign-in is invite-only.</p>
-          <p className="text-xs text-muted-foreground">
-            Real authentication ships in the next release. If you should
-            have access, ask an admin to send you an invite.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
+/**
+ * Hard-to-miss notice shown when the Supabase environment variables are
+ * missing or malformed. Reminds operators that NEXT_PUBLIC_* values are baked
+ * into the bundle at build time, so a host needs a fresh, cache-free rebuild
+ * to pick them up. Renders nothing when Supabase is configured.
+ */
+function SupabaseConfigNotice() {
+  const status = getSupabaseConfigStatus();
+  if (status.configured) return null;
   return (
-    <>
-      <div className="text-center">
-        <p className="text-sm font-medium">Choose a demo account</p>
-        <p className="text-xs text-muted-foreground">
-          Each account drops you into a different role so you can explore the
-          portal from that perspective.
-        </p>
+    <section
+      role="alert"
+      className="rounded-xl border-2 border-amber-400 bg-amber-50 px-4 py-3.5 shadow-soft"
+    >
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-white shadow-soft">
+          <AlertTriangle className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 space-y-1">
+          <p className="text-sm font-semibold text-amber-900">
+            Supabase is not configured
+          </p>
+          <p className="text-xs leading-snug text-amber-800">
+            {status.reason} Set <code>NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
+            <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>, then trigger a fresh
+            redeploy with the build cache turned <strong>off</strong> — these
+            values are compiled into the bundle at build time.
+          </p>
+        </div>
       </div>
-      <Card>
-        <CardContent className="p-3">
-          <ul className="divide-y divide-border">
-            {demoUsers.map((u) => (
-              <li key={u.id}>
-                <button
-                  type="button"
-                  onClick={() => pick(u.id)}
-                  className="w-full flex items-center gap-3 px-3 py-3 rounded-md hover:bg-accent transition-colors text-left"
-                >
-                  <Avatar className="h-9 w-9">
-                    <AvatarFallback>{initials(u.name)}</AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{u.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {u.email}
-                    </p>
-                  </div>
-                  <Badge variant={ROLE_TONE[u.role]} className="capitalize">
-                    {u.role}
-                  </Badge>
-                  <LogIn className="h-4 w-4 text-muted-foreground" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
-      <p className="text-center text-[11px] text-muted-foreground">
-        Demo sessions live in <code>localStorage</code> only — nothing is
-        saved to a server. Sign out from the avatar menu in the top bar.
-      </p>
-    </>
+    </section>
   );
 }
 

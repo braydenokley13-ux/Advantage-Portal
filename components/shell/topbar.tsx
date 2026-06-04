@@ -9,7 +9,7 @@ import {
   Users as UsersIcon,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { RoleSwitcher } from "./role-switcher";
+import { UserMenu } from "./user-menu";
 import { NotificationsPopover } from "@/components/notifications/notifications-popover";
 import { useStore } from "@/lib/store";
 import { useRole } from "@/lib/role-context";
@@ -162,7 +162,7 @@ export function Topbar() {
       </div>
 
       <NotificationsPopover />
-      <RoleSwitcher />
+      <UserMenu />
     </header>
   );
 }

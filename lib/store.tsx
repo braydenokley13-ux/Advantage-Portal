@@ -2,6 +2,19 @@
 
 /* eslint-disable react-hooks/set-state-in-effect */
 
+/**
+ * StoreProvider — the app's in-memory cache of every collection, hydrated
+ * from Supabase and kept in sync after each mutation.
+ *
+ * Every mutation persists through the Supabase `ApiClient` and then
+ * re-hydrates so the local cache reflects server-side cascades (status
+ * transitions, slot creation, checklist seeding, …). Important user-facing
+ * events also fan out an email via `fanOutNotificationEmail`.
+ *
+ * When Supabase credentials are absent the store stays empty and its
+ * mutators reject with a clear error — the app fails loud rather than
+ * silently serving throwaway data.
+ */
 import {
   createContext,
   useCallback,
@@ -11,30 +24,14 @@ import {
   useState,
 } from "react";
 import {
-  checklists as seedChecklists,
-  conversations as seedConversations,
-  defaultChecklistItems,
-  issues as seedIssues,
-  issueSlots as seedIssueSlots,
-  messages as seedMessages,
-  notifications as seedNotifications,
-  pitches as seedPitches,
-  sections as seedSections,
-  submissions as seedSubmissions,
-  tasks as seedTasks,
-  users,
-} from "./mock-data";
-import {
   scanDeadlineReminders,
   type DeadlineReminder,
 } from "./deadline-reminders";
-import { resolveDataMode, type DataMode } from "./supabase/env";
 import { getSupabaseBrowserClient } from "./supabase/browser";
 import { fanOutNotificationEmail } from "./email/notify-client";
 import { SupabaseApiClient } from "./api/supabase-adapter";
-import type { ApiClient } from "./api/client";
+import { ApiError, type ApiClient } from "./api/client";
 import type {
-  ChecklistItem,
   Comment,
   Conversation,
   EditorialChecklist,
@@ -65,6 +62,7 @@ import type {
   TaskStatus,
   User,
 } from "./types";
+import type { DataMode } from "./supabase/env";
 
 type StoreValue = {
   users: User[];
@@ -84,13 +82,13 @@ type StoreValue = {
   checklists: EditorialChecklist[];
 
   // ── Data-layer status ────────────────────────────────────────────────────
-  /** Active data mode — "mock" (in-memory) or "supabase" (persisted). */
+  /** Active data mode — always "supabase". */
   mode: DataMode;
-  /** True once the store has loaded its data. Always true in mock mode. */
+  /** True once the store has loaded its data. */
   hydrated: boolean;
   /** Non-null when a Supabase hydration attempt failed. */
   hydrationError: string | null;
-  /** Re-load every collection from the backend (no-op in mock mode). */
+  /** Re-load every collection from the backend. */
   refresh: () => Promise<void>;
 
   setTaskStatus: (taskId: string, status: TaskStatus) => Promise<void>;
@@ -268,65 +266,38 @@ let _id = 1000;
 const nextId = (prefix: string) => `${prefix}${++_id}`;
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  // Data mode is env-driven and stable for the life of the page.
-  const dataMode = useMemo<DataMode>(() => resolveDataMode().mode, []);
-  const isSupabase = dataMode === "supabase";
-
-  // The Supabase-backed API client. In supabase mode the store delegates
-  // every mutation to it and hydrates its collections from it. `null` in
-  // mock mode (or when credentials are missing).
+  // The Supabase-backed API client. The store delegates every mutation to it
+  // and hydrates its collections from it. `null` when credentials are missing.
   const api = useMemo<ApiClient | null>(() => {
-    if (!isSupabase) return null;
     const client = getSupabaseBrowserClient();
     return client ? new SupabaseApiClient(client, null) : null;
-  }, [isSupabase]);
+  }, []);
 
-  // In supabase mode collections start empty and are filled by `refresh()`;
-  // in mock mode they start from the seed.
-  const [usersState, setUsersState] = useState<User[]>(() =>
-    isSupabase ? [] : users.map((u) => ({ active: true, ...u }))
-  );
-  const [tasks, setTasks] = useState<Task[]>(() =>
-    isSupabase ? [] : seedTasks
-  );
-  const [submissions, setSubmissions] = useState<Submission[]>(() =>
-    isSupabase ? [] : seedSubmissions
-  );
+  // Collections start empty and are filled by `refresh()` once the auth
+  // session is known (RLS gates every read on the session).
+  const [usersState, setUsersState] = useState<User[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
-  const [conversations, setConversations] = useState<Conversation[]>(() =>
-    isSupabase ? [] : seedConversations
-  );
-  const [messages, setMessages] = useState<Message[]>(() =>
-    isSupabase ? [] : seedMessages
-  );
-  const [notifications, setNotifications] = useState<Notification[]>(() =>
-    isSupabase ? [] : seedNotifications
-  );
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [moderationReports, setModerationReports] = useState<ModerationReport[]>(
     []
   );
-  const [sectionsState, setSectionsState] = useState<Section[]>(() =>
-    isSupabase ? [] : seedSections
-  );
-  const [issues, setIssues] = useState<Issue[]>(() =>
-    isSupabase ? [] : seedIssues
-  );
-  const [issueSlots, setIssueSlots] = useState<IssueSlot[]>(() =>
-    isSupabase ? [] : seedIssueSlots
-  );
-  const [pitches, setPitches] = useState<Pitch[]>(() =>
-    isSupabase ? [] : seedPitches
-  );
-  const [checklists, setChecklists] = useState<EditorialChecklist[]>(() =>
-    isSupabase ? [] : seedChecklists
-  );
+  const [sectionsState, setSectionsState] = useState<Section[]>([]);
+  const [issues, setIssues] = useState<Issue[]>([]);
+  const [issueSlots, setIssueSlots] = useState<IssueSlot[]>([]);
+  const [pitches, setPitches] = useState<Pitch[]>([]);
+  const [checklists, setChecklists] = useState<EditorialChecklist[]>([]);
   const [issuedReminderKeys, setIssuedReminderKeys] = useState<Set<string>>(
     () => new Set()
   );
 
-  // Hydration status. Mock mode is hydrated immediately.
-  const [hydrated, setHydrated] = useState(!isSupabase);
+  // Hydration status. With no client (unconfigured) we are immediately
+  // "hydrated" with empty collections so the app can render its fail-loud UI.
+  const [hydrated, setHydrated] = useState(!api);
   const [hydrationError, setHydrationError] = useState<string | null>(null);
 
   // ── Supabase hydration ─────────────────────────────────────────────────
@@ -426,348 +397,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
   }, [api, refresh]);
 
-  const setTaskStatus = useCallback((taskId: string, status: TaskStatus) => {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, status } : t))
-    );
-  }, []);
-
-  const createTask = useCallback(
-    (input: {
-      title: string;
-      instructions: string;
-      writerId: string;
-      editorId?: string;
-      deadline: string;
-      color?: TaskColor;
-      wordCountTarget?: number;
-      citationsRequired?: boolean;
-    }): Task => {
-      const t: Task = {
-        id: nextId("t"),
-        title: input.title,
-        instructions: input.instructions,
-        writerId: input.writerId,
-        editorId: input.editorId,
-        deadline: input.deadline,
-        status: "not_started",
-        color: input.color ?? "green",
-        createdAt: new Date().toISOString(),
-        wordCountTarget: input.wordCountTarget,
-        citationsRequired: input.citationsRequired,
-      };
-      setTasks((prev) => [t, ...prev]);
-
-      setNotifications((prev) => [
-        {
-          id: nextId("n"),
-          userId: input.writerId,
-          kind: "task_assigned",
-          title: `Assigned: ${input.title}`,
-          body: `Due ${new Date(input.deadline).toLocaleDateString()}`,
-          read: false,
-          createdAt: new Date().toISOString(),
-        },
-        ...(input.editorId
-          ? [
-              {
-                id: nextId("n"),
-                userId: input.editorId,
-                kind: "task_assigned" as const,
-                title: `Editing: ${input.title}`,
-                body: "You are the assigned editor.",
-                read: false,
-                createdAt: new Date().toISOString(),
-              },
-            ]
-          : []),
-        ...prev,
-      ]);
-      return t;
-    },
-    []
-  );
-
-  const updateTask = useCallback(
-    (
-      taskId: string,
-      patch: Partial<
-        Pick<
-          Task,
-          | "title"
-          | "instructions"
-          | "writerId"
-          | "editorId"
-          | "deadline"
-          | "color"
-          | "wordCountTarget"
-          | "citationsRequired"
-          | "sectionId"
-          | "issueId"
-          | "copyEditorId"
-          | "factCheckerId"
-          | "slug"
-          | "brief"
-        >
-      >
-    ) => {
-      setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, ...patch } : t))
-      );
-    },
-    []
-  );
-
-  const updateUserRole = useCallback((userId: string, role: Role) => {
-    setUsersState((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, role } : u))
-    );
-  }, []);
-
-  const setUserActive = useCallback((userId: string, active: boolean) => {
-    setUsersState((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, active } : u))
-    );
-  }, []);
-
-  const togglePinMessage = useCallback((messageId: string) => {
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === messageId
-          ? {
-              ...m,
-              pinnedAt: m.pinnedAt ? undefined : new Date().toISOString(),
-            }
-          : m
-      )
-    );
-  }, []);
-
-  const pushNotification = useCallback(
-    (input: {
-      userId: string;
-      kind: NotificationKind;
-      title: string;
-      body?: string;
-    }) => {
-      // Dedupe: skip identical (userId+kind+title) notifications fired within
-      // the last 60 seconds to keep the inbox useful when multiple events
-      // (in-app/email/push fan-out) arrive for the same logical action.
-      // Real backend would dedup at delivery; mock dedup keeps demo clean.
-      setNotifications((prev) => {
-        const cutoff = Date.now() - 60_000;
-        const recentDuplicate = prev.find(
-          (n) =>
-            n.userId === input.userId &&
-            n.kind === input.kind &&
-            n.title === input.title &&
-            new Date(n.createdAt).getTime() > cutoff
-        );
-        if (recentDuplicate) return prev;
-        return [
-          {
-            id: nextId("n"),
-            userId: input.userId,
-            kind: input.kind,
-            title: input.title,
-            body: input.body,
-            read: false,
-            createdAt: new Date().toISOString(),
-          },
-          ...prev,
-        ];
-      });
-    },
-    []
-  );
-
-  const createSubmission = useCallback(
-    (input: {
-      taskId: string;
-      authorId: string;
-      type: SubmissionType;
-      content: string;
-      file?: SubmissionFileMeta;
-    }): Submission => {
-      const taskSubs = submissions.filter((s) => s.taskId === input.taskId);
-      const version = taskSubs.length + 1;
-      const sub: Submission = {
-        id: nextId("s"),
-        taskId: input.taskId,
-        type: input.type,
-        version,
-        content: input.content,
-        file: input.type === "file" ? input.file : undefined,
-        createdAt: new Date().toISOString(),
-        isCurrent: true,
-      };
-      setSubmissions((prev) => [
-        ...prev.map((s) =>
-          s.taskId === input.taskId ? { ...s, isCurrent: false } : s
-        ),
-        sub,
-      ]);
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === input.taskId
-            ? { ...t, status: "submitted", currentSubmissionId: sub.id }
-            : t
-        )
-      );
-
-      const task = tasks.find((t) => t.id === input.taskId);
-      if (task?.editorId) {
-        pushNotification({
-          userId: task.editorId,
-          kind: "submission",
-          title: `New submission: ${task.title}`,
-          body: `Version ${version} ready for review.`,
-        });
-      }
-      return sub;
-    },
-    [submissions, tasks, pushNotification]
-  );
-
-  const submitReview = useCallback(
-    (input: {
-      submissionId: string;
-      reviewerId: string;
-      decision: ReviewDecision;
-      notes?: string;
-    }): Review => {
-      const review: Review = {
-        id: nextId("r"),
-        submissionId: input.submissionId,
-        reviewerId: input.reviewerId,
-        decision: input.decision,
-        notes: input.notes,
-        createdAt: new Date().toISOString(),
-      };
-      setReviews((prev) => [...prev, review]);
-
-      const sub = submissions.find((s) => s.id === input.submissionId);
-      const task = sub ? tasks.find((t) => t.id === sub.taskId) : undefined;
-      if (task) {
-        const nextStatus: TaskStatus =
-          input.decision === "approved" || input.decision === "rejected"
-            ? "complete"
-            : "in_progress";
-        setTasks((prev) =>
-          prev.map((t) =>
-            t.id === task.id ? { ...t, status: nextStatus } : t
-          )
-        );
-        pushNotification({
-          userId: task.writerId,
-          kind: "review_decision",
-          title:
-            input.decision === "approved"
-              ? `Approved: ${task.title}`
-              : input.decision === "rejected"
-                ? `Rejected: ${task.title}`
-                : `Changes requested: ${task.title}`,
-          body: input.notes,
-        });
-      }
-      return review;
-    },
-    [submissions, tasks, pushNotification]
-  );
-
-  const addComment = useCallback(
-    (input: {
-      submissionId: string;
-      authorId: string;
-      body: string;
-      inline?: boolean;
-      lineNumber?: number;
-    }): Comment => {
-      const isInline = input.inline ?? input.lineNumber !== undefined;
-      const c: Comment = {
-        id: nextId("c"),
-        submissionId: input.submissionId,
-        authorId: input.authorId,
-        body: input.body,
-        inline: isInline,
-        lineNumber: isInline ? input.lineNumber : undefined,
-        resolved: false,
-        createdAt: new Date().toISOString(),
-      };
-      setComments((prev) => [...prev, c]);
-
-      const sub = submissions.find((s) => s.id === input.submissionId);
-      const task = sub ? tasks.find((t) => t.id === sub.taskId) : undefined;
-      if (task && task.writerId !== input.authorId) {
-        pushNotification({
-          userId: task.writerId,
-          kind: "comment",
-          title: `New comment on ${task.title}`,
-        });
-      }
-      return c;
-    },
-    [submissions, tasks, pushNotification]
-  );
-
-  const toggleResolveComment = useCallback((commentId: string) => {
-    setComments((prev) =>
-      prev.map((c) =>
-        c.id === commentId ? { ...c, resolved: !c.resolved } : c
-      )
-    );
-  }, []);
-
-  const sendMessage = useCallback(
-    (input: {
-      conversationId: string;
-      authorId: string;
-      body: string;
-    }): Message => {
-      const m: Message = {
-        id: nextId("m"),
-        conversationId: input.conversationId,
-        authorId: input.authorId,
-        body: input.body,
-        createdAt: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, m]);
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.id === input.conversationId
-            ? { ...c, lastMessageAt: m.createdAt }
-            : c
-        )
-      );
-      return m;
-    },
-    []
-  );
-
-  const createConversation = useCallback(
-    (input: {
-      kind: Conversation["kind"];
-      title: string;
-      memberIds: string[];
-    }): Conversation => {
-      const c: Conversation = {
-        id: nextId("conv"),
-        kind: input.kind,
-        title: input.title,
-        memberIds: input.memberIds,
-      };
-      setConversations((prev) => [...prev, c]);
-      return c;
-    },
-    []
-  );
-
-  const markNotificationRead = useCallback((id: string, read = true) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read } : n))
-    );
-  }, []);
-
+  // ── Deadline scan ───────────────────────────────────────────────────────
+  // Pure-ish helper that turns due/overdue tasks into in-app notifications.
+  // Used by the leader/admin "simulate reminders" control; the production
+  // path is the /api/cron/deadline-reminders endpoint.
   const runDeadlineScan = useCallback(
     (input?: { now?: Date }) => {
       const fired = scanDeadlineReminders({
@@ -802,568 +435,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setIssuedReminderKeys(new Set());
   }, []);
 
-  const requestExtension = useCallback(
-    (input: {
-      taskId: string;
-      requestedById: string;
-      newDeadline: string;
-      reason: string;
-    }): ExtensionRequest => {
-      const req: ExtensionRequest = {
-        id: nextId("ext"),
-        taskId: input.taskId,
-        requestedById: input.requestedById,
-        newDeadline: input.newDeadline,
-        reason: input.reason,
-        status: "pending",
-        createdAt: new Date().toISOString(),
-      };
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === input.taskId ? { ...t, extensionRequest: req } : t
-        )
-      );
-      // Notify every leader/admin so an approver sees it. Per product
-      // direction, both leaders and admins can approve extensions.
-      for (const u of usersState.filter(
-        (x) => x.role === "leader" || x.role === "admin"
-      )) {
-        pushNotification({
-          userId: u.id,
-          kind: "task_assigned",
-          title: "Extension requested",
-          body: input.reason.slice(0, 120),
-        });
-      }
-      return req;
-    },
-    [usersState, pushNotification]
-  );
-
-  const createModerationReport = useCallback(
-    (input: {
-      messageId: string;
-      reporterId: string;
-      reason: ModerationReason;
-      reporterNote?: string;
-      severity?: ModerationSeverity;
-    }): ModerationReport | null => {
-      const message = messages.find((m) => m.id === input.messageId);
-      if (!message) return null;
-      // Dedupe: one report per (reporter, message). Subsequent calls bump
-      // the existing report's note instead of creating a new row.
-      const existing = moderationReports.find(
-        (r) =>
-          r.messageId === input.messageId && r.reporterId === input.reporterId
-      );
-      if (existing) {
-        if (
-          input.reporterNote &&
-          input.reporterNote !== existing.reporterNote
-        ) {
-          setModerationReports((prev) =>
-            prev.map((r) =>
-              r.id === existing.id
-                ? {
-                    ...r,
-                    reporterNote: input.reporterNote,
-                    updatedAt: new Date().toISOString(),
-                  }
-                : r
-            )
-          );
-        }
-        return existing;
-      }
-      const now = new Date().toISOString();
-      const report: ModerationReport = {
-        id: nextId("rep"),
-        messageId: input.messageId,
-        conversationId: message.conversationId,
-        reportedUserId: message.authorId,
-        reporterId: input.reporterId,
-        reason: input.reason,
-        reporterNote: input.reporterNote,
-        status: "open",
-        severity: input.severity ?? "medium",
-        createdAt: now,
-        updatedAt: now,
-      };
-      setModerationReports((prev) => [report, ...prev]);
-      // Notify every admin so they triage. Leaders also get a heads-up so
-      // safety power is shared per the role policy.
-      for (const u of usersState.filter(
-        (x) => x.role === "admin" || x.role === "leader"
-      )) {
-        pushNotification({
-          userId: u.id,
-          kind: "comment",
-          title: "Message reported",
-          body: input.reporterNote?.slice(0, 100),
-        });
-      }
-      return report;
-    },
-    [messages, moderationReports, usersState, pushNotification]
-  );
-
-  const updateModerationReport = useCallback(
-    (
-      id: string,
-      patch: {
-        status?: ModerationStatus;
-        severity?: ModerationSeverity;
-        internalNote?: string;
-        resolvedById?: string;
-      }
-    ) => {
-      setModerationReports((prev) =>
-        prev.map((r) => {
-          if (r.id !== id) return r;
-          const becomingResolved =
-            (patch.status === "resolved" || patch.status === "dismissed") &&
-            r.status !== "resolved" &&
-            r.status !== "dismissed";
-          return {
-            ...r,
-            ...patch,
-            resolvedAt: becomingResolved
-              ? new Date().toISOString()
-              : r.resolvedAt,
-            updatedAt: new Date().toISOString(),
-          };
-        })
-      );
-    },
-    []
-  );
-
-  const hideMessage = useCallback((messageId: string) => {
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === messageId
-          ? {
-              ...m,
-              hiddenAt: m.hiddenAt ? undefined : new Date().toISOString(),
-            }
-          : m
-      )
-    );
-  }, []);
-
-  const decideExtension = useCallback(
-    (input: { taskId: string; decidedById: string; approve: boolean }) => {
-      setTasks((prev) =>
-        prev.map((t) => {
-          if (t.id !== input.taskId || !t.extensionRequest) return t;
-          const decided: ExtensionRequest = {
-            ...t.extensionRequest,
-            status: input.approve ? "approved" : "denied",
-            decidedById: input.decidedById,
-            decidedAt: new Date().toISOString(),
-          };
-          // On approval, slide the task deadline forward.
-          return {
-            ...t,
-            deadline: input.approve ? decided.newDeadline : t.deadline,
-            extensionRequest: decided,
-          };
-        })
-      );
-      const task = tasks.find((t) => t.id === input.taskId);
-      if (task?.extensionRequest) {
-        pushNotification({
-          userId: task.extensionRequest.requestedById,
-          kind: "task_assigned",
-          title: input.approve
-            ? `Extension approved: ${task.title}`
-            : `Extension denied: ${task.title}`,
-        });
-      }
-    },
-    [tasks, pushNotification]
-  );
-
-  // ── Newsroom: pitches ─────────────────────────────────────────────────────
-  const createPitch = useCallback(
-    (input: {
-      proposedHeadline: string;
-      sectionId?: string;
-      angle: string;
-      whyNow: string;
-      proposedSources: string[];
-      expectedWordCount?: number;
-      deadlinePref?: string;
-      writerNote?: string;
-      writerId: string;
-    }): Pitch => {
-      const p: Pitch = {
-        id: nextId("p"),
-        proposedHeadline: input.proposedHeadline,
-        sectionId: input.sectionId,
-        angle: input.angle,
-        whyNow: input.whyNow,
-        proposedSources: input.proposedSources,
-        expectedWordCount: input.expectedWordCount,
-        deadlinePref: input.deadlinePref,
-        writerNote: input.writerNote,
-        writerId: input.writerId,
-        status: "submitted",
-        createdAt: new Date().toISOString(),
-      };
-      setPitches((prev) => [p, ...prev]);
-      // Notify every editor/leader so they triage. (In real life we'd target
-      // section editors only — we don't have section-editor mapping yet.)
-      for (const u of usersState.filter(
-        (x) => x.role === "editor" || x.role === "leader"
-      )) {
-        pushNotification({
-          userId: u.id,
-          kind: "task_assigned",
-          title: "New pitch submitted",
-          body: input.proposedHeadline,
-        });
-      }
-      return p;
-    },
-    [usersState, pushNotification]
-  );
-
-  const decidePitch = useCallback(
-    (input: {
-      pitchId: string;
-      decidedById: string;
-      accept: boolean;
-      note?: string;
-    }): Pitch | null => {
-      let updated: Pitch | null = null;
-      setPitches((prev) =>
-        prev.map((p) => {
-          if (p.id !== input.pitchId) return p;
-          updated = {
-            ...p,
-            status: input.accept ? "accepted" : "declined",
-            editorNote: input.note,
-            decidedById: input.decidedById,
-            decidedAt: new Date().toISOString(),
-          };
-          return updated;
-        })
-      );
-      if (updated) {
-        const u = updated as Pitch;
-        pushNotification({
-          userId: u.writerId,
-          kind: "review_decision",
-          title: input.accept
-            ? `Pitch accepted: ${u.proposedHeadline}`
-            : `Pitch declined: ${u.proposedHeadline}`,
-          body: input.note,
-        });
-      }
-      return updated;
-    },
-    [pushNotification]
-  );
-
-  const convertPitch = useCallback(
-    (input: {
-      pitchId: string;
-      editorId?: string;
-      deadline: string;
-      leaderId: string;
-      issueId?: string;
-    }): Task | null => {
-      const pitch = pitches.find((p) => p.id === input.pitchId);
-      if (!pitch || pitch.status === "converted") return null;
-      const t: Task = {
-        id: nextId("t"),
-        title: pitch.proposedHeadline,
-        instructions: [
-          pitch.angle && `Angle: ${pitch.angle}`,
-          pitch.whyNow && `Why now: ${pitch.whyNow}`,
-          pitch.proposedSources.length
-            ? `Proposed sources:\n- ${pitch.proposedSources.join("\n- ")}`
-            : null,
-        ]
-          .filter(Boolean)
-          .join("\n\n"),
-        writerId: pitch.writerId,
-        editorId: input.editorId,
-        deadline: input.deadline,
-        status: "not_started",
-        color: "green",
-        createdAt: new Date().toISOString(),
-        wordCountTarget: pitch.expectedWordCount,
-        sectionId: pitch.sectionId,
-        pitchId: pitch.id,
-        issueId: input.issueId,
-        brief: {
-          angle: pitch.angle,
-          requiredSources: pitch.proposedSources,
-          publishingNotes: pitch.writerNote,
-        },
-      };
-      setTasks((prev) => [t, ...prev]);
-      setPitches((prev) =>
-        prev.map((p) =>
-          p.id === pitch.id
-            ? {
-                ...p,
-                status: "converted",
-                taskId: t.id,
-                decidedById: input.leaderId,
-                decidedAt: new Date().toISOString(),
-              }
-            : p
-        )
-      );
-      if (input.issueId) {
-        setIssueSlots((prev) => [
-          ...prev,
-          {
-            id: nextId("slot"),
-            issueId: input.issueId!,
-            taskId: t.id,
-            priority: "nice_to_run",
-          },
-        ]);
-      }
-      pushNotification({
-        userId: pitch.writerId,
-        kind: "task_assigned",
-        title: `Assigned: ${pitch.proposedHeadline}`,
-        body: `Due ${new Date(input.deadline).toLocaleDateString()}`,
-      });
-      if (input.editorId) {
-        pushNotification({
-          userId: input.editorId,
-          kind: "task_assigned",
-          title: `Editing: ${pitch.proposedHeadline}`,
-        });
-      }
-      return t;
-    },
-    [pitches, pushNotification]
-  );
-
-  // ── Newsroom: issues ──────────────────────────────────────────────────────
-  const addIssueSlot = useCallback(
-    (input: {
-      issueId: string;
-      taskId: string;
-      priority?: IssueSlotPriority;
-    }): IssueSlot => {
-      const s: IssueSlot = {
-        id: nextId("slot"),
-        issueId: input.issueId,
-        taskId: input.taskId,
-        priority: input.priority ?? "nice_to_run",
-      };
-      setIssueSlots((prev) => [...prev, s]);
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === input.taskId ? { ...t, issueId: input.issueId } : t
-        )
-      );
-      return s;
-    },
-    []
-  );
-
-  const removeIssueSlot = useCallback((slotId: string) => {
-    setIssueSlots((prev) => {
-      const slot = prev.find((s) => s.id === slotId);
-      if (slot) {
-        // Detach the issue from the task too so it doesn't ghost-link.
-        setTasks((tprev) =>
-          tprev.map((t) =>
-            t.id === slot.taskId && t.issueId === slot.issueId
-              ? { ...t, issueId: undefined }
-              : t
-          )
-        );
-      }
-      return prev.filter((s) => s.id !== slotId);
-    });
-  }, []);
-
-  const setIssueStatus = useCallback(
-    (issueId: string, status: IssueStatus) => {
-      setIssues((prev) =>
-        prev.map((i) => (i.id === issueId ? { ...i, status } : i))
-      );
-      // Publishing the issue advances every slotted, ready story to complete
-      // (which derives to "published" via the stage helper).
-      if (status === "published") {
-        setTasks((prev) =>
-          prev.map((t) =>
-            t.issueId === issueId && t.status !== "complete"
-              ? { ...t, status: "complete" }
-              : t
-          )
-        );
-      }
-    },
-    []
-  );
-
-  // ── Newsroom: editorial checklists ───────────────────────────────────────
-  const toggleChecklistItem = useCallback(
-    (input: { taskId: string; key: string; by: string; checked?: boolean }) => {
-      setChecklists((prev) => {
-        let list = prev.find((c) => c.taskId === input.taskId);
-        let nextList: EditorialChecklist[];
-        const now = new Date().toISOString();
-        if (!list) {
-          // Seed a default list lazily so toggles "just work" on any task.
-          const task = tasks.find((t) => t.id === input.taskId);
-          const isBusiness =
-            task?.sectionId === "sec-business" ||
-            task?.sectionId === "sec-markets";
-          const isSensitive = !!task?.sensitive;
-          const seeded: EditorialChecklist = {
-            taskId: input.taskId,
-            items: defaultChecklistItems({ isBusiness, isSensitive }),
-            updatedAt: now,
-          };
-          list = seeded;
-          nextList = [...prev, seeded];
-        } else {
-          nextList = prev.slice();
-        }
-        const idx = nextList.findIndex((c) => c.taskId === input.taskId);
-        const items = nextList[idx].items.map((it): ChecklistItem => {
-          if (it.key !== input.key) return it;
-          const checked =
-            input.checked !== undefined ? input.checked : !it.checked;
-          return {
-            ...it,
-            checked,
-            checkedById: checked ? input.by : undefined,
-            checkedAt: checked ? now : undefined,
-          };
-        });
-        nextList[idx] = { ...nextList[idx], items, updatedAt: now };
-        return nextList;
-      });
-    },
-    [tasks]
-  );
-
-  // ── Newsroom: sensitive flags ────────────────────────────────────────────
-  const raiseSensitiveFlag = useCallback(
-    (input: {
-      taskId: string;
-      raisedById: string;
-      reason: SensitiveReason;
-      notes: string;
-    }): SensitiveFlag => {
-      const flag: SensitiveFlag = {
-        id: nextId("sf"),
-        taskId: input.taskId,
-        reason: input.reason,
-        notes: input.notes,
-        status: "open",
-        raisedById: input.raisedById,
-        raisedAt: new Date().toISOString(),
-      };
-      setTasks((prev) =>
-        prev.map((t) => (t.id === input.taskId ? { ...t, sensitive: flag } : t))
-      );
-      // Auto-add the sensitive checklist group if missing.
-      setChecklists((prev) => {
-        const existing = prev.find((c) => c.taskId === input.taskId);
-        if (existing && existing.items.some((i) => i.group === "sensitive")) {
-          return prev;
-        }
-        const sensitiveItems = defaultChecklistItems({
-          isBusiness: false,
-          isSensitive: true,
-        }).filter((i) => i.group === "sensitive");
-        if (existing) {
-          return prev.map((c) =>
-            c.taskId === input.taskId
-              ? {
-                  ...c,
-                  items: [...c.items, ...sensitiveItems],
-                  updatedAt: new Date().toISOString(),
-                }
-              : c
-          );
-        }
-        return [
-          ...prev,
-          {
-            taskId: input.taskId,
-            items: defaultChecklistItems({
-              isBusiness: false,
-              isSensitive: true,
-            }),
-            updatedAt: new Date().toISOString(),
-          },
-        ];
-      });
-      // Notify leaders + admins for triage.
-      for (const u of usersState.filter(
-        (x) => x.role === "leader" || x.role === "admin"
-      )) {
-        pushNotification({
-          userId: u.id,
-          kind: "review_decision",
-          title: "Sensitive story flagged",
-          body: input.notes.slice(0, 120),
-        });
-      }
-      return flag;
-    },
-    [usersState, pushNotification]
-  );
-
-  const decideSensitiveFlag = useCallback(
-    (input: {
-      taskId: string;
-      decidedById: string;
-      status: "cleared" | "holding";
-      note?: string;
-    }) => {
-      setTasks((prev) =>
-        prev.map((t) => {
-          if (t.id !== input.taskId || !t.sensitive) return t;
-          return {
-            ...t,
-            sensitive: {
-              ...t.sensitive,
-              status: input.status,
-              decidedById: input.decidedById,
-              decidedAt: new Date().toISOString(),
-              decisionNote: input.note,
-            },
-          };
-        })
-      );
-      const task = tasks.find((t) => t.id === input.taskId);
-      if (task) {
-        pushNotification({
-          userId: task.writerId,
-          kind: "review_decision",
-          title:
-            input.status === "cleared"
-              ? `Sensitive review cleared: ${task.title}`
-              : `Sensitive review on hold: ${task.title}`,
-          body: input.note,
-        });
-      }
-    },
-    [tasks, pushNotification]
-  );
-
-  const markAllRead = useCallback((userId: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.userId === userId ? { ...n, read: true } : n))
-    );
-  }, []);
-
   const value = useMemo<StoreValue>(() => {
     const collections = {
       users: usersState,
@@ -1380,7 +451,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       issueSlots,
       pitches,
       checklists,
-      mode: dataMode,
+      mode: "supabase" as DataMode,
       hydrated,
       hydrationError,
       refresh,
@@ -1388,28 +459,234 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       resetDeadlineReminders,
     };
 
-    // ── Supabase mode: every mutation persists through the API client and
-    //    then re-hydrates so the local cache reflects server-side cascades.
-    if (api) {
-      const persist = async <T,>(op: Promise<T>): Promise<T> => {
-        const result = await op;
-        await refresh();
-        return result;
+    // ── No backend configured: fail loud. Mutators reject with a clear error
+    //    instead of silently mutating throwaway in-memory data.
+    if (!api) {
+      const fail = async (): Promise<never> => {
+        throw new ApiError(
+          "The portal backend is not configured. Check the Supabase environment variables.",
+          503
+        );
       };
-      // Active users in a set of roles — recipients for "all editors / all
-      // leaders" style fan-outs (pitches, extensions, sensitive flags, reports).
-      const staff = (roles: Role[]): string[] =>
-        usersState
-          .filter((u) => u.active !== false && roles.includes(u.role))
-          .map((u) => u.id);
       return {
         ...collections,
-        setTaskStatus: async (id, status) => {
-          await persist(api.setTaskStatus(id, status));
-        },
-        createTask: async (input) => {
-          const task = await persist(api.createTask(input));
-          // Email fan-out mirrors the in-app notifications the mock store emits.
+        setTaskStatus: fail,
+        createTask: fail,
+        updateTask: fail,
+        updateUserRole: fail,
+        setUserActive: fail,
+        togglePinMessage: fail,
+        createSubmission: fail,
+        submitReview: fail,
+        addComment: fail,
+        toggleResolveComment: fail,
+        sendMessage: fail,
+        createConversation: fail,
+        markNotificationRead: fail,
+        markAllRead: fail,
+        pushNotification: fail,
+        requestExtension: fail,
+        decideExtension: fail,
+        createModerationReport: fail,
+        updateModerationReport: fail,
+        hideMessage: fail,
+        createPitch: fail,
+        decidePitch: fail,
+        convertPitch: fail,
+        addIssueSlot: fail,
+        removeIssueSlot: fail,
+        setIssueStatus: fail,
+        toggleChecklistItem: fail,
+        raiseSensitiveFlag: fail,
+        decideSensitiveFlag: fail,
+      };
+    }
+
+    // ── Every mutation persists through the API client and then re-hydrates
+    //    so the local cache reflects server-side cascades.
+    const persist = async <T,>(op: Promise<T>): Promise<T> => {
+      const result = await op;
+      await refresh();
+      return result;
+    };
+    // Active users in a set of roles — recipients for "all editors / all
+    // leaders" style fan-outs (pitches, extensions, sensitive flags, reports).
+    const staff = (roles: Role[]): string[] =>
+      usersState
+        .filter((u) => u.active !== false && roles.includes(u.role))
+        .map((u) => u.id);
+    return {
+      ...collections,
+      setTaskStatus: async (id, status) => {
+        await persist(api.setTaskStatus(id, status));
+      },
+      createTask: async (input) => {
+        const task = await persist(api.createTask(input));
+        // Email fan-out mirrors the in-app notifications the backend emits.
+        fanOutNotificationEmail([task.writerId], {
+          kind: "task_assigned",
+          title: `Assigned: ${task.title}`,
+          body: `Due ${new Date(task.deadline).toLocaleDateString()}`,
+        });
+        if (task.editorId) {
+          fanOutNotificationEmail([task.editorId], {
+            kind: "task_assigned",
+            title: `Editing: ${task.title}`,
+            body: "You are the assigned editor.",
+          });
+        }
+        return task;
+      },
+      updateTask: async (id, patch) => {
+        await persist(api.updateTask(id, patch));
+      },
+      updateUserRole: async (id, role) => {
+        await persist(api.updateUserRole(id, role));
+      },
+      setUserActive: async (id, active) => {
+        await persist(api.setUserActive(id, active));
+      },
+      togglePinMessage: async (id) => {
+        await persist(api.togglePinMessage(id));
+      },
+      createSubmission: async (input) => {
+        const submission = await persist(api.createSubmission(input));
+        const task = tasks.find((t) => t.id === input.taskId);
+        if (task?.editorId) {
+          fanOutNotificationEmail([task.editorId], {
+            kind: "submission",
+            title: `New submission: ${task.title}`,
+            body: `Version ${submission.version} ready for review.`,
+          });
+        }
+        return submission;
+      },
+      submitReview: async (input) => {
+        const review = await persist(api.createReview(input));
+        const sub = submissions.find((s) => s.id === input.submissionId);
+        const task = sub ? tasks.find((t) => t.id === sub.taskId) : undefined;
+        if (task) {
+          fanOutNotificationEmail([task.writerId], {
+            kind: "review_decision",
+            title:
+              input.decision === "approved"
+                ? `Approved: ${task.title}`
+                : input.decision === "rejected"
+                  ? `Rejected: ${task.title}`
+                  : `Changes requested: ${task.title}`,
+            body: input.notes,
+          });
+        }
+        return review;
+      },
+      addComment: async (input) => {
+        const comment = await persist(api.createComment(input));
+        const sub = submissions.find((s) => s.id === input.submissionId);
+        const task = sub ? tasks.find((t) => t.id === sub.taskId) : undefined;
+        if (task && task.writerId !== input.authorId) {
+          fanOutNotificationEmail([task.writerId], {
+            kind: "comment",
+            title: `New comment on ${task.title}`,
+          });
+        }
+        return comment;
+      },
+      toggleResolveComment: async (id) => {
+        await persist(api.toggleResolveComment(id));
+      },
+      sendMessage: (input) => persist(api.sendMessage(input)),
+      createConversation: (input) => persist(api.createConversation(input)),
+      markNotificationRead: async (id, read) => {
+        await persist(api.markNotificationRead(id, read));
+      },
+      markAllRead: async (userId) => {
+        await persist(api.markAllNotificationsRead(userId));
+      },
+      pushNotification: async (input) => {
+        // Notification fan-out to other users requires a server-side
+        // (service-role) path — the `notifications` RLS policy only lets a
+        // client insert a row for itself or when acting as an admin. Treat
+        // this as best-effort so a rejected fan-out can't break the user's
+        // action; production delivery is a server-side trigger's job.
+        try {
+          await api.pushNotification(input);
+          await refresh();
+        } catch {
+          /* RLS-rejected fan-out — delivered server-side in production */
+        }
+        // The in-app row may be RLS-blocked above, but the email goes out
+        // through the service-role route regardless. This covers direct
+        // callers such as the announcements composer.
+        fanOutNotificationEmail([input.userId], {
+          kind: input.kind,
+          title: input.title,
+          body: input.body,
+        });
+      },
+      requestExtension: async (input) => {
+        const req = await persist(api.requestExtension(input));
+        fanOutNotificationEmail(staff(["leader", "admin"]), {
+          kind: "task_assigned",
+          title: "Extension requested",
+          body: input.reason.slice(0, 120),
+        });
+        return req;
+      },
+      decideExtension: async (input) => {
+        const task = tasks.find((t) => t.id === input.taskId);
+        await persist(api.decideExtension(input));
+        if (task?.extensionRequest) {
+          fanOutNotificationEmail([task.extensionRequest.requestedById], {
+            kind: "task_assigned",
+            title: input.approve
+              ? `Extension approved: ${task.title}`
+              : `Extension denied: ${task.title}`,
+          });
+        }
+      },
+      createModerationReport: async (input) => {
+        const report = await persist(api.createModerationReport(input));
+        fanOutNotificationEmail(
+          staff(["admin", "leader"]).filter((id) => id !== input.reporterId),
+          {
+            kind: "comment",
+            title: "Message reported",
+            body: input.reporterNote?.slice(0, 100),
+          }
+        );
+        return report;
+      },
+      updateModerationReport: async (id, patch) => {
+        await persist(api.updateModerationReport(id, patch));
+      },
+      hideMessage: async (id) => {
+        await persist(api.hideMessage(id));
+      },
+      createPitch: async (input) => {
+        const pitch = await persist(api.createPitch(input));
+        fanOutNotificationEmail(staff(["editor", "leader"]), {
+          kind: "task_assigned",
+          title: "New pitch submitted",
+          body: input.proposedHeadline,
+        });
+        return pitch;
+      },
+      decidePitch: async (input) => {
+        const pitch = await persist(api.decidePitch(input));
+        if (pitch) {
+          fanOutNotificationEmail([pitch.writerId], {
+            kind: "review_decision",
+            title: input.accept
+              ? `Pitch accepted: ${pitch.proposedHeadline}`
+              : `Pitch declined: ${pitch.proposedHeadline}`,
+            body: input.note,
+          });
+        }
+        return pitch;
+      },
+      convertPitch: async (input) => {
+        const task = await persist(api.convertPitch(input));
+        if (task) {
           fanOutNotificationEmail([task.writerId], {
             kind: "task_assigned",
             title: `Assigned: ${task.title}`,
@@ -1419,287 +696,54 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             fanOutNotificationEmail([task.editorId], {
               kind: "task_assigned",
               title: `Editing: ${task.title}`,
-              body: "You are the assigned editor.",
             });
           }
-          return task;
-        },
-        updateTask: async (id, patch) => {
-          await persist(api.updateTask(id, patch));
-        },
-        updateUserRole: async (id, role) => {
-          await persist(api.updateUserRole(id, role));
-        },
-        setUserActive: async (id, active) => {
-          await persist(api.setUserActive(id, active));
-        },
-        togglePinMessage: async (id) => {
-          await persist(api.togglePinMessage(id));
-        },
-        createSubmission: async (input) => {
-          const submission = await persist(api.createSubmission(input));
-          const task = tasks.find((t) => t.id === input.taskId);
-          if (task?.editorId) {
-            fanOutNotificationEmail([task.editorId], {
-              kind: "submission",
-              title: `New submission: ${task.title}`,
-              body: `Version ${submission.version} ready for review.`,
-            });
-          }
-          return submission;
-        },
-        submitReview: async (input) => {
-          const review = await persist(api.createReview(input));
-          const sub = submissions.find((s) => s.id === input.submissionId);
-          const task = sub ? tasks.find((t) => t.id === sub.taskId) : undefined;
-          if (task) {
-            fanOutNotificationEmail([task.writerId], {
-              kind: "review_decision",
-              title:
-                input.decision === "approved"
-                  ? `Approved: ${task.title}`
-                  : input.decision === "rejected"
-                    ? `Rejected: ${task.title}`
-                    : `Changes requested: ${task.title}`,
-              body: input.notes,
-            });
-          }
-          return review;
-        },
-        addComment: async (input) => {
-          const comment = await persist(api.createComment(input));
-          const sub = submissions.find((s) => s.id === input.submissionId);
-          const task = sub ? tasks.find((t) => t.id === sub.taskId) : undefined;
-          if (task && task.writerId !== input.authorId) {
-            fanOutNotificationEmail([task.writerId], {
-              kind: "comment",
-              title: `New comment on ${task.title}`,
-            });
-          }
-          return comment;
-        },
-        toggleResolveComment: async (id) => {
-          await persist(api.toggleResolveComment(id));
-        },
-        sendMessage: (input) => persist(api.sendMessage(input)),
-        createConversation: (input) => persist(api.createConversation(input)),
-        markNotificationRead: async (id, read) => {
-          await persist(api.markNotificationRead(id, read));
-        },
-        markAllRead: async (userId) => {
-          await persist(api.markAllNotificationsRead(userId));
-        },
-        pushNotification: async (input) => {
-          // Notification fan-out to other users requires a server-side
-          // (service-role) path — the `notifications` RLS policy only lets a
-          // client insert a row for itself or when acting as an admin. Treat
-          // this as best-effort so a rejected fan-out can't break the user's
-          // action; production delivery is a server-side trigger's job.
-          try {
-            await api.pushNotification(input);
-            await refresh();
-          } catch {
-            /* RLS-rejected fan-out — delivered server-side in production */
-          }
-          // The in-app row may be RLS-blocked above, but the email goes out
-          // through the service-role route regardless. This covers direct
-          // callers such as the announcements composer.
-          fanOutNotificationEmail([input.userId], {
-            kind: input.kind,
-            title: input.title,
-            body: input.body,
-          });
-        },
-        requestExtension: async (input) => {
-          const req = await persist(api.requestExtension(input));
-          fanOutNotificationEmail(staff(["leader", "admin"]), {
-            kind: "task_assigned",
-            title: "Extension requested",
-            body: input.reason.slice(0, 120),
-          });
-          return req;
-        },
-        decideExtension: async (input) => {
-          const task = tasks.find((t) => t.id === input.taskId);
-          await persist(api.decideExtension(input));
-          if (task?.extensionRequest) {
-            fanOutNotificationEmail([task.extensionRequest.requestedById], {
-              kind: "task_assigned",
-              title: input.approve
-                ? `Extension approved: ${task.title}`
-                : `Extension denied: ${task.title}`,
-            });
-          }
-        },
-        createModerationReport: async (input) => {
-          const report = await persist(api.createModerationReport(input));
-          fanOutNotificationEmail(
-            staff(["admin", "leader"]).filter((id) => id !== input.reporterId),
-            {
-              kind: "comment",
-              title: "Message reported",
-              body: input.reporterNote?.slice(0, 100),
-            }
-          );
-          return report;
-        },
-        updateModerationReport: async (id, patch) => {
-          await persist(api.updateModerationReport(id, patch));
-        },
-        hideMessage: async (id) => {
-          await persist(api.hideMessage(id));
-        },
-        createPitch: async (input) => {
-          const pitch = await persist(api.createPitch(input));
-          fanOutNotificationEmail(staff(["editor", "leader"]), {
-            kind: "task_assigned",
-            title: "New pitch submitted",
-            body: input.proposedHeadline,
-          });
-          return pitch;
-        },
-        decidePitch: async (input) => {
-          const pitch = await persist(api.decidePitch(input));
-          if (pitch) {
-            fanOutNotificationEmail([pitch.writerId], {
-              kind: "review_decision",
-              title: input.accept
-                ? `Pitch accepted: ${pitch.proposedHeadline}`
-                : `Pitch declined: ${pitch.proposedHeadline}`,
-              body: input.note,
-            });
-          }
-          return pitch;
-        },
-        convertPitch: async (input) => {
-          const task = await persist(api.convertPitch(input));
-          if (task) {
-            fanOutNotificationEmail([task.writerId], {
-              kind: "task_assigned",
-              title: `Assigned: ${task.title}`,
-              body: `Due ${new Date(task.deadline).toLocaleDateString()}`,
-            });
-            if (task.editorId) {
-              fanOutNotificationEmail([task.editorId], {
-                kind: "task_assigned",
-                title: `Editing: ${task.title}`,
-              });
-            }
-          }
-          return task;
-        },
-        addIssueSlot: (input) => persist(api.upsertIssueSlot(input)),
-        removeIssueSlot: async (id) => {
-          await persist(api.removeIssueSlot(id));
-        },
-        setIssueStatus: async (id, status) => {
-          await persist(
-            status === "published"
-              ? api.publishIssue(id)
-              : api.updateIssue(id, { status })
-          );
-        },
-        toggleChecklistItem: async (input) => {
-          await persist(api.updateChecklistItem(input));
-        },
-        raiseSensitiveFlag: async (input) => {
-          const flag = await persist(api.raiseSensitiveFlag(input));
-          fanOutNotificationEmail(
-            staff(["leader", "admin"]).filter((id) => id !== input.raisedById),
-            {
-              kind: "review_decision",
-              title: "Sensitive story flagged",
-              body: input.notes.slice(0, 120),
-            }
-          );
-          return flag;
-        },
-        decideSensitiveFlag: async (input) => {
-          const task = tasks.find((t) => t.id === input.taskId);
-          await persist(api.decideSensitiveFlag(input));
-          if (task) {
-            fanOutNotificationEmail([task.writerId], {
-              kind: "review_decision",
-              title:
-                input.status === "cleared"
-                  ? `Sensitive review cleared: ${task.title}`
-                  : `Sensitive review on hold: ${task.title}`,
-              body: input.note,
-            });
-          }
-        },
-      };
-    }
-
-    // ── Mock mode: the synchronous in-memory mutations, surfaced through the
-    //    same async contract so callers are mode-agnostic.
-    return {
-      ...collections,
-      setTaskStatus: async (id, status) => {
-        setTaskStatus(id, status);
+        }
+        return task;
       },
-      createTask: async (input) => createTask(input),
-      updateTask: async (id, patch) => {
-        updateTask(id, patch);
-      },
-      updateUserRole: async (id, role) => {
-        updateUserRole(id, role);
-      },
-      setUserActive: async (id, active) => {
-        setUserActive(id, active);
-      },
-      togglePinMessage: async (id) => {
-        togglePinMessage(id);
-      },
-      createSubmission: async (input) => createSubmission(input),
-      submitReview: async (input) => submitReview(input),
-      addComment: async (input) => addComment(input),
-      toggleResolveComment: async (id) => {
-        toggleResolveComment(id);
-      },
-      sendMessage: async (input) => sendMessage(input),
-      createConversation: async (input) => createConversation(input),
-      markNotificationRead: async (id, read) => {
-        markNotificationRead(id, read);
-      },
-      markAllRead: async (userId) => {
-        markAllRead(userId);
-      },
-      pushNotification: async (input) => {
-        pushNotification(input);
-      },
-      requestExtension: async (input) => requestExtension(input),
-      decideExtension: async (input) => {
-        decideExtension(input);
-      },
-      createModerationReport: async (input) => createModerationReport(input),
-      updateModerationReport: async (id, patch) => {
-        updateModerationReport(id, patch);
-      },
-      hideMessage: async (id) => {
-        hideMessage(id);
-      },
-      createPitch: async (input) => createPitch(input),
-      decidePitch: async (input) => decidePitch(input),
-      convertPitch: async (input) => convertPitch(input),
-      addIssueSlot: async (input) => addIssueSlot(input),
+      addIssueSlot: (input) => persist(api.upsertIssueSlot(input)),
       removeIssueSlot: async (id) => {
-        removeIssueSlot(id);
+        await persist(api.removeIssueSlot(id));
       },
       setIssueStatus: async (id, status) => {
-        setIssueStatus(id, status);
+        await persist(
+          status === "published"
+            ? api.publishIssue(id)
+            : api.updateIssue(id, { status })
+        );
       },
       toggleChecklistItem: async (input) => {
-        toggleChecklistItem(input);
+        await persist(api.updateChecklistItem(input));
       },
-      raiseSensitiveFlag: async (input) => raiseSensitiveFlag(input),
+      raiseSensitiveFlag: async (input) => {
+        const flag = await persist(api.raiseSensitiveFlag(input));
+        fanOutNotificationEmail(
+          staff(["leader", "admin"]).filter((id) => id !== input.raisedById),
+          {
+            kind: "review_decision",
+            title: "Sensitive story flagged",
+            body: input.notes.slice(0, 120),
+          }
+        );
+        return flag;
+      },
       decideSensitiveFlag: async (input) => {
-        decideSensitiveFlag(input);
+        const task = tasks.find((t) => t.id === input.taskId);
+        await persist(api.decideSensitiveFlag(input));
+        if (task) {
+          fanOutNotificationEmail([task.writerId], {
+            kind: "review_decision",
+            title:
+              input.status === "cleared"
+                ? `Sensitive review cleared: ${task.title}`
+                : `Sensitive review on hold: ${task.title}`,
+            body: input.note,
+          });
+        }
       },
     };
   }, [
     api,
-    dataMode,
     hydrated,
     hydrationError,
     refresh,
@@ -1717,37 +761,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     issueSlots,
     pitches,
     checklists,
-    setTaskStatus,
-    createTask,
-    updateTask,
-    updateUserRole,
-    setUserActive,
-    togglePinMessage,
-    createSubmission,
-    submitReview,
-    addComment,
-    toggleResolveComment,
-    sendMessage,
-    createConversation,
-    markNotificationRead,
-    markAllRead,
-    pushNotification,
     runDeadlineScan,
     resetDeadlineReminders,
-    requestExtension,
-    decideExtension,
-    createModerationReport,
-    updateModerationReport,
-    hideMessage,
-    createPitch,
-    decidePitch,
-    convertPitch,
-    addIssueSlot,
-    removeIssueSlot,
-    setIssueStatus,
-    toggleChecklistItem,
-    raiseSensitiveFlag,
-    decideSensitiveFlag,
   ]);
 
   return (
