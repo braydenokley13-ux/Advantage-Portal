@@ -15,12 +15,13 @@ import { TaskRow } from "@/components/task/task-row";
 import { TaskDrawer } from "@/components/task/task-drawer";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { useRole } from "@/lib/role-context";
-import { useStore } from "@/lib/store";
-import { useVisibleTasks } from "@/lib/hooks";
+import { useReviews, useVisibleTasks } from "@/lib/hooks";
+import type { ReviewZ } from "@/lib/contracts";
 import type { Task } from "@/lib/types";
 import { isPast } from "date-fns";
 
 const EMPTY_TASKS: Task[] = [];
+const EMPTY_REVIEWS: ReviewZ[] = [];
 
 /**
  * Editor "Reviews" queue — surfaces work waiting on a review decision,
@@ -31,7 +32,8 @@ const EMPTY_TASKS: Task[] = [];
 export default function ReviewsPage() {
   const { role } = useRole();
   const { data } = useVisibleTasks();
-  const { reviews } = useStore();
+  const { data: reviewsData } = useReviews();
+  const reviews = reviewsData ?? EMPTY_REVIEWS;
   const tasks = data ?? EMPTY_TASKS;
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 

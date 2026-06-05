@@ -34,7 +34,7 @@ import { ReviewPanel } from "./review-panel";
 import { TaskFormDialog } from "./task-form-dialog";
 import { EditorialChecklist } from "./editorial-checklist";
 import { SensitivePanel } from "./sensitive-panel";
-import { useEditorialChecklist, useTasks } from "@/lib/hooks";
+import { useEditorialChecklist, useSubmissions, useTasks } from "@/lib/hooks";
 import { useStore } from "@/lib/store";
 import { useRole } from "@/lib/role-context";
 import { canEditTask, canReview, canSubmit } from "@/lib/permissions";
@@ -60,6 +60,7 @@ const STATUS_TONE: Record<
 };
 
 const EMPTY_TASKS: Task[] = [];
+const EMPTY_SUBMISSIONS: Submission[] = [];
 
 export function TaskDrawer({
   taskId,
@@ -74,17 +75,23 @@ export function TaskDrawer({
   // changes triggered inside the drawer (raise/clear/hold) round-trip via
   // the API and refetch into this view too.
   const { data: tasksData, refetch: refetchTasks } = useTasks();
-  // Sync caches kept on the store: submissions, users, sections, issues,
-  // and the existing extension-request mutators (unchanged this phase).
-  const {
-    submissions,
-    users,
-    sections,
-    issues,
-    requestExtension,
-    decideExtension,
-  } = useStore();
+  // Submissions for this task come through the API hook so a new version (or
+  // a review that flips the current flag) round-trips into the drawer.
+  const { data: submissionsData, refetch: refetchSubmissions } = useSubmissions(
+    taskId ?? undefined
+  );
+  // Sync caches kept on the store: users, sections, issues, and the existing
+  // extension-request mutators (unchanged this phase).
+  const { users, sections, issues, requestExtension, decideExtension } =
+    useStore();
   const tasks = tasksData ?? EMPTY_TASKS;
+  const submissions = submissionsData ?? EMPTY_SUBMISSIONS;
+  // After a submission or review, the task status and submission set both
+  // change server-side — refetch both so the drawer reflects the cascade.
+  const afterTaskWrite = () => {
+    refetchSubmissions();
+    refetchTasks();
+  };
   const { user } = useRole();
   const [extOpen, setExtOpen] = useState(false);
   const [extDate, setExtDate] = useState("");
@@ -422,14 +429,14 @@ export function TaskDrawer({
             </TabsContent>
 
             <TabsContent value="submit" className="mt-4 space-y-5">
-              <SubmissionForm task={task} />
+              <SubmissionForm task={task} onSubmitted={afterTaskWrite} />
 
               <div className="space-y-2">
                 <h4 className="text-xs uppercase tracking-wide text-muted-foreground font-medium">
                   Version history
                 </h4>
                 <SubmissionHistory
-                  taskId={task.id}
+                  submissions={taskSubmissions}
                   selectedId={selected?.id}
                   onSelect={(s) => setSelectedId(s.id)}
                 />
@@ -450,7 +457,11 @@ export function TaskDrawer({
                 </p>
               )}
 
-              <ReviewPanel task={task} submission={selected} />
+              <ReviewPanel
+                task={task}
+                submission={selected}
+                onDecided={afterTaskWrite}
+              />
 
               {taskSubmissions.length > 1 && (
                 <div>
@@ -458,7 +469,7 @@ export function TaskDrawer({
                     Earlier versions
                   </h4>
                   <SubmissionHistory
-                    taskId={task.id}
+                    submissions={taskSubmissions}
                     selectedId={selected?.id}
                     onSelect={(s) => setSelectedId(s.id)}
                   />

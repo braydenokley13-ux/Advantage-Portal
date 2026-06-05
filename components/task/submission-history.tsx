@@ -2,7 +2,6 @@
 
 import { FileText, Link2, Type } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { useStore } from "@/lib/store";
 import { format } from "date-fns";
 import { cn, formatBytes } from "@/lib/utils";
 import type { Submission, SubmissionType } from "@/lib/types";
@@ -14,18 +13,16 @@ const KIND_ICON: Record<SubmissionType, React.ComponentType<{ className?: string
 };
 
 export function SubmissionHistory({
-  taskId,
+  submissions,
   onSelect,
   selectedId,
 }: {
-  taskId: string;
+  /** Submissions for the task, in any order — sorted newest-first here. */
+  submissions: Submission[];
   onSelect?: (s: Submission) => void;
   selectedId?: string;
 }) {
-  const { submissions } = useStore();
-  const items = submissions
-    .filter((s) => s.taskId === taskId)
-    .sort((a, b) => b.version - a.version);
+  const items = submissions.slice().sort((a, b) => b.version - a.version);
 
   if (items.length === 0) {
     return (

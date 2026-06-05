@@ -6,12 +6,17 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { useApiClient } from "@/lib/api/provider";
+import { useComments } from "@/lib/hooks";
 import { useStore } from "@/lib/store";
+import { emailOnComment } from "@/lib/email/workflow";
 import { useRole } from "@/lib/role-context";
 import { canComment } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
 import { format } from "date-fns";
-import type { Submission, Task } from "@/lib/types";
+import type { Comment, Submission, Task } from "@/lib/types";
+
+const EMPTY_COMMENTS: Comment[] = [];
 
 export function InlineMarkdownViewer({
   task,
@@ -21,7 +26,12 @@ export function InlineMarkdownViewer({
   submission: Submission;
 }) {
   const { user } = useRole();
-  const { comments, users, addComment, toggleResolveComment } = useStore();
+  const api = useApiClient();
+  const { data: commentsData, refetch: refetchComments } = useComments(
+    submission.id
+  );
+  const { users } = useStore();
+  const comments = commentsData ?? EMPTY_COMMENTS;
 
   const [activeLine, setActiveLine] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
@@ -82,17 +92,24 @@ export function InlineMarkdownViewer({
     }
   }
 
-  function send(line: number) {
+  async function send(line: number) {
     if (!draft.trim()) return;
-    addComment({
+    await api.createComment({
       submissionId: submission.id,
       authorId: user.id,
       body: draft.trim(),
       inline: true,
       lineNumber: line,
     });
+    emailOnComment(task, user.id);
     setDraft("");
     setActiveLine(null);
+    refetchComments();
+  }
+
+  async function resolve(id: string) {
+    await api.toggleResolveComment(id);
+    refetchComments();
   }
 
   return (
@@ -206,7 +223,7 @@ export function InlineMarkdownViewer({
                           </div>
                           <button
                             type="button"
-                            onClick={() => toggleResolveComment(c.id)}
+                            onClick={() => resolve(c.id)}
                             className={cn(
                               "text-[10px] flex items-center gap-1 rounded-md px-1.5 py-0.5 transition-colors",
                               c.resolved

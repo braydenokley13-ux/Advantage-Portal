@@ -194,10 +194,34 @@ Done in `docs/newsroom-persistence-supabase.md` (Migration notes):
   `supabase_realtime` publication (idempotent) and sets `REPLICA IDENTITY
   FULL`. RLS still governs what each subscriber receives.
 
+## Phase 6 update — review loop off the store (this update)
+
+The submission → review → comment editing surfaces no longer write through
+`useStore`; they call the API client directly and refetch focused hooks,
+matching the `SensitivePanel` / `EditorialChecklist` pattern from phase 4.
+
+- `SubmissionForm`, `ReviewPanel`, `CommentsPanel`, and
+  `InlineMarkdownViewer` now write via `useApiClient()` and read via
+  `useSubmissions` / `useReviews(submissionId)` / `useComments(submissionId)`.
+- `TaskDrawer` owns the task's submissions through `useSubmissions(taskId)`
+  and passes an `afterTaskWrite` refetch (submissions + tasks) to the submit
+  and review surfaces so the status cascade round-trips. `SubmissionHistory`
+  now takes a `submissions` prop instead of reading the store.
+- `/reviews` reads the review list via `useReviews()`.
+- The workflow emails the store used to fan out (new submission → editor,
+  decision → writer, comment → writer) moved to `lib/email/workflow.ts` so
+  they're preserved on the API-client path.
+- The store dropped `createSubmission`, `submitReview`, `addComment`,
+  `toggleResolveComment`, and the now-unused `comments` collection. To keep
+  the board / dashboard caches live with the new write path, `StoreProvider`
+  subscribes to `submissions`, `reviews`, `comments`, `tasks` via
+  `useRealtimeRefetch`. Migration `0010_realtime_review_loop.sql` adds those
+  tables to the `supabase_realtime` publication.
+
 ## Future work
 
-- Migrate submission / review / comment writes off `useStore` (phase 2
-  follow-up).
+- Migrate the remaining store writes (messages, moderation, extensions) onto
+  hooks; the review loop and newsroom planning are now done.
 - Per-stage SLAs and escalation-on-delay.
 - Photo/visual asset model and rights tracking.
 - Public-site sync (theadvantagejournal.org) for `published` stories.
