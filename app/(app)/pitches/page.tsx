@@ -24,7 +24,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useStore } from "@/lib/store";
 import { useApiClient } from "@/lib/api/provider";
-import { useIssues, usePitches, useSections } from "@/lib/hooks";
+import {
+  useIssues,
+  usePitches,
+  useRealtimeRefetch,
+  useSections,
+} from "@/lib/hooks";
 import { useRole } from "@/lib/role-context";
 import { initials } from "@/lib/utils";
 import type { Pitch } from "@/lib/types";
@@ -64,6 +69,10 @@ export default function PitchesPage() {
   const sections = sectionsData ?? EMPTY_SECTIONS;
   const pitches = pitchesData ?? EMPTY_PITCHES;
   const issues = issuesData ?? EMPTY_ISSUES;
+
+  // Keep the queue live: when any reviewer accepts, declines, or converts a
+  // pitch, refetch so everyone watching sees the decision without a reload.
+  useRealtimeRefetch(["pitches"], refetchPitches);
 
   const isReviewer =
     role === "editor" || role === "leader" || role === "admin";

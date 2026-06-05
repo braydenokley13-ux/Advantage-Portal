@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Newspaper,
   CalendarDays,
@@ -20,6 +20,7 @@ import {
   useChecklists,
   useIssueSlots,
   useIssues,
+  useRealtimeRefetch,
   useSections,
   useTasks,
 } from "@/lib/hooks";
@@ -52,7 +53,21 @@ export default function IssuesPage() {
     () => (slotsData ?? []).map((s) => s.taskId),
     [slotsData]
   );
-  const { data: checklistsData } = useChecklists(slottedTaskIds);
+  const { data: checklistsData, refetch: refetchChecklists } =
+    useChecklists(slottedTaskIds);
+
+  // Live readiness: any change to an issue, its slate, a story, a checklist,
+  // or a sensitive flag re-derives the board for everyone watching it.
+  const refetchAll = useCallback(() => {
+    refetchIssues();
+    refetchSlots();
+    refetchTasks();
+    refetchChecklists();
+  }, [refetchIssues, refetchSlots, refetchTasks, refetchChecklists]);
+  useRealtimeRefetch(
+    ["issues", "issue_slots", "tasks", "editorial_checklists", "sensitive_flags"],
+    refetchAll
+  );
 
   const { role } = useRole();
   const issues = issuesData ?? [];

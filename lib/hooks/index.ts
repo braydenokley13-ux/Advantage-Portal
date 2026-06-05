@@ -9,6 +9,8 @@
 
 import { useApiClient } from "@/lib/api/provider";
 import { useApiResource, type ApiResource } from "./use-api-resource";
+
+export { useRealtimeRefetch } from "./use-realtime";
 import { visibleTasks } from "@/lib/visibility";
 import { useSession } from "@/lib/session";
 import type {

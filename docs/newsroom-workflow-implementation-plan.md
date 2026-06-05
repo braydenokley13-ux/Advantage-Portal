@@ -179,11 +179,23 @@ Done in `docs/newsroom-persistence-supabase.md` (Migration notes):
 - New `/admin` Data mode badge so QA can see whether the active session
   is mock, Supabase, or supabase-requested-but-fallback.
 
+## Phase 5 update — realtime board + pitch queue (this update)
+
+- New `useRealtimeRefetch(tables, onChange)` hook
+  (`lib/hooks/use-realtime.ts`) subscribes to Supabase Postgres changes and
+  debounce-refetches. It is a no-op in mock mode / when Supabase env is
+  absent, so every page can call it unconditionally.
+- `/pitches` subscribes to `pitches`; the queue now updates live when any
+  reviewer accepts, declines, or converts a pitch.
+- `/issues` subscribes to `issues`, `issue_slots`, `tasks`,
+  `editorial_checklists`, and `sensitive_flags`; readiness, blockers, and
+  backlogs re-derive live as the slate changes.
+- Migration `0009_realtime_newsroom.sql` adds those tables to the
+  `supabase_realtime` publication (idempotent) and sets `REPLICA IDENTITY
+  FULL`. RLS still governs what each subscriber receives.
+
 ## Future work
 
-- Real Supabase Auth (still pending from earlier phases). Required for
-  RLS to bind to a real `auth.uid()`.
-- Realtime subscription for the issue board and pitch queue.
 - Migrate submission / review / comment writes off `useStore` (phase 2
   follow-up).
 - Per-stage SLAs and escalation-on-delay.
