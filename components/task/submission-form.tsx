@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useStore } from "@/lib/store";
+import { useApiClient } from "@/lib/api/provider";
+import { emailOnSubmission } from "@/lib/email/workflow";
 import { useRole } from "@/lib/role-context";
 import { canSubmit } from "@/lib/permissions";
 import type { SubmissionFileMeta, SubmissionType, Task } from "@/lib/types";
@@ -19,7 +20,7 @@ export function SubmissionForm({
   onSubmitted?: () => void;
 }) {
   const { user } = useRole();
-  const { createSubmission } = useStore();
+  const api = useApiClient();
 
   const allowed = canSubmit({ task, user });
 
@@ -71,15 +72,14 @@ export function SubmissionForm({
           : tab === "google_doc"
             ? docUrl.trim()
             : fileName;
-      await Promise.resolve(
-        createSubmission({
-          taskId: task.id,
-          authorId: user.id,
-          type: tab,
-          content,
-          file: tab === "file" && fileMeta ? fileMeta : undefined,
-        })
-      );
+      const submission = await api.createSubmission({
+        taskId: task.id,
+        authorId: user.id,
+        type: tab,
+        content,
+        file: tab === "file" && fileMeta ? fileMeta : undefined,
+      });
+      emailOnSubmission(task, submission.version);
       setInline("");
       setDocUrl("");
       setFileName("");

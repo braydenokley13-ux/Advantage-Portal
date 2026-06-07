@@ -28,11 +28,11 @@ import {
   type DeadlineReminder,
 } from "./deadline-reminders";
 import { getSupabaseBrowserClient } from "./supabase/browser";
+import { useRealtimeRefetch } from "./hooks/use-realtime";
 import { fanOutNotificationEmail } from "./email/notify-client";
 import { SupabaseApiClient } from "./api/supabase-adapter";
 import { ApiError, type ApiClient } from "./api/client";
 import type {
-  Comment,
   Conversation,
   EditorialChecklist,
   ExtensionRequest,
@@ -49,14 +49,11 @@ import type {
   NotificationKind,
   Pitch,
   Review,
-  ReviewDecision,
   Role,
   Section,
   SensitiveFlag,
   SensitiveReason,
   Submission,
-  SubmissionFileMeta,
-  SubmissionType,
   Task,
   TaskColor,
   TaskStatus,
@@ -69,7 +66,6 @@ type StoreValue = {
   tasks: Task[];
   submissions: Submission[];
   reviews: Review[];
-  comments: Comment[];
   conversations: Conversation[];
   messages: Message[];
   notifications: Notification[];
@@ -127,27 +123,6 @@ type StoreValue = {
   updateUserRole: (userId: string, role: Role) => Promise<void>;
   setUserActive: (userId: string, active: boolean) => Promise<void>;
   togglePinMessage: (messageId: string) => Promise<void>;
-  createSubmission: (input: {
-    taskId: string;
-    authorId: string;
-    type: SubmissionType;
-    content: string;
-    file?: SubmissionFileMeta;
-  }) => Promise<Submission>;
-  submitReview: (input: {
-    submissionId: string;
-    reviewerId: string;
-    decision: ReviewDecision;
-    notes?: string;
-  }) => Promise<Review>;
-  addComment: (input: {
-    submissionId: string;
-    authorId: string;
-    body: string;
-    inline?: boolean;
-    lineNumber?: number;
-  }) => Promise<Comment>;
-  toggleResolveComment: (commentId: string) => Promise<void>;
   sendMessage: (input: {
     conversationId: string;
     authorId: string;
@@ -279,7 +254,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
-  const [comments, setComments] = useState<Comment[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -309,7 +283,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         t,
         subs,
         rev,
-        com,
         conv,
         msg,
         notif,
@@ -324,7 +297,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         api.listTasks(),
         api.listSubmissions(),
         api.listReviews(),
-        api.listComments(),
         api.listConversations(),
         api.listMessages(),
         api.listNotifications(),
@@ -341,7 +313,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setTasks(t as Task[]);
       setSubmissions(subs as Submission[]);
       setReviews(rev as Review[]);
-      setComments(com as Comment[]);
       setConversations(conv as Conversation[]);
       setMessages(msg as Message[]);
       setNotifications(notif as Notification[]);
@@ -435,13 +406,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setIssuedReminderKeys(new Set());
   }, []);
 
+  // Keep the cache live when work is mutated outside the store. The
+  // submission / review / comment writes now go through the API client (the
+  // drawer's editing surfaces), so the store no longer re-hydrates on those
+  // actions itself. Realtime closes that gap — any change to these tables
+  // (from this user or another) refreshes the shared cache the board,
+  // dashboard, and admin surfaces read from. No-op when realtime is
+  // unavailable; the per-mutation refresh still covers store-driven writes.
+  useRealtimeRefetch(["submissions", "reviews", "comments", "tasks"], refresh);
+
   const value = useMemo<StoreValue>(() => {
     const collections = {
       users: usersState,
       tasks,
       submissions,
       reviews,
-      comments,
       conversations,
       messages,
       notifications,
@@ -476,10 +455,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         updateUserRole: fail,
         setUserActive: fail,
         togglePinMessage: fail,
-        createSubmission: fail,
-        submitReview: fail,
-        addComment: fail,
-        toggleResolveComment: fail,
         sendMessage: fail,
         createConversation: fail,
         markNotificationRead: fail,
@@ -548,51 +523,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       },
       togglePinMessage: async (id) => {
         await persist(api.togglePinMessage(id));
-      },
-      createSubmission: async (input) => {
-        const submission = await persist(api.createSubmission(input));
-        const task = tasks.find((t) => t.id === input.taskId);
-        if (task?.editorId) {
-          fanOutNotificationEmail([task.editorId], {
-            kind: "submission",
-            title: `New submission: ${task.title}`,
-            body: `Version ${submission.version} ready for review.`,
-          });
-        }
-        return submission;
-      },
-      submitReview: async (input) => {
-        const review = await persist(api.createReview(input));
-        const sub = submissions.find((s) => s.id === input.submissionId);
-        const task = sub ? tasks.find((t) => t.id === sub.taskId) : undefined;
-        if (task) {
-          fanOutNotificationEmail([task.writerId], {
-            kind: "review_decision",
-            title:
-              input.decision === "approved"
-                ? `Approved: ${task.title}`
-                : input.decision === "rejected"
-                  ? `Rejected: ${task.title}`
-                  : `Changes requested: ${task.title}`,
-            body: input.notes,
-          });
-        }
-        return review;
-      },
-      addComment: async (input) => {
-        const comment = await persist(api.createComment(input));
-        const sub = submissions.find((s) => s.id === input.submissionId);
-        const task = sub ? tasks.find((t) => t.id === sub.taskId) : undefined;
-        if (task && task.writerId !== input.authorId) {
-          fanOutNotificationEmail([task.writerId], {
-            kind: "comment",
-            title: `New comment on ${task.title}`,
-          });
-        }
-        return comment;
-      },
-      toggleResolveComment: async (id) => {
-        await persist(api.toggleResolveComment(id));
       },
       sendMessage: (input) => persist(api.sendMessage(input)),
       createConversation: (input) => persist(api.createConversation(input)),
@@ -751,7 +681,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     tasks,
     submissions,
     reviews,
-    comments,
     conversations,
     messages,
     notifications,

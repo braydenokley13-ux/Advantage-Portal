@@ -46,6 +46,7 @@ vi.mock("@/lib/hooks", () => ({
   useSections: () => ({ data: mocks.sections, refetch: vi.fn() }),
   usePitches: () => ({ data: mocks.pitches, refetch: vi.fn() }),
   useIssues: () => ({ data: mocks.issues, refetch: vi.fn() }),
+  useRealtimeRefetch: () => {},
 }));
 
 vi.mock("@/lib/store", () => ({

@@ -9,6 +9,8 @@
 
 import { useApiClient } from "@/lib/api/provider";
 import { useApiResource, type ApiResource } from "./use-api-resource";
+
+export { useRealtimeRefetch } from "./use-realtime";
 import { visibleTasks } from "@/lib/visibility";
 import { useSession } from "@/lib/session";
 import type {
@@ -68,7 +70,12 @@ export function useTask(id: string | null): ApiResource<TaskZ | null> {
 // ── Submissions ─────────────────────────────────────────────────────────────
 export function useSubmissions(taskId?: string): ApiResource<SubmissionZ[]> {
   const api = useApiClient();
-  return useApiResource(() => api.listSubmissions(taskId), [api, taskId]);
+  // No task scope → no submissions (rather than a list-everything fetch). The
+  // drawer passes `undefined` while closed; this keeps that a cheap no-op.
+  return useApiResource(
+    () => (taskId ? api.listSubmissions(taskId) : Promise.resolve([])),
+    [api, taskId]
+  );
 }
 
 // ── Reviews ─────────────────────────────────────────────────────────────────
@@ -80,7 +87,12 @@ export function useReviews(submissionId?: string): ApiResource<ReviewZ[]> {
 // ── Comments ────────────────────────────────────────────────────────────────
 export function useComments(submissionId?: string): ApiResource<CommentZ[]> {
   const api = useApiClient();
-  return useApiResource(() => api.listComments(submissionId), [api, submissionId]);
+  // No submission scope → no comments. Both callers (comments panel + inline
+  // viewer) read per-submission, so skip the list-everything fetch.
+  return useApiResource(
+    () => (submissionId ? api.listComments(submissionId) : Promise.resolve([])),
+    [api, submissionId]
+  );
 }
 
 // ── Conversations + Messages ────────────────────────────────────────────────

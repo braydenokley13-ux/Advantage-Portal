@@ -5,7 +5,9 @@ import { CheckCircle2, RefreshCw, Sparkles, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { useStore } from "@/lib/store";
+import { useApiClient } from "@/lib/api/provider";
+import { useReviews } from "@/lib/hooks";
+import { emailOnReview } from "@/lib/email/workflow";
 import { useRole } from "@/lib/role-context";
 import { canReview } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
@@ -88,21 +90,23 @@ export function ReviewPanel({
   onDecided?: () => void;
 }) {
   const { user } = useRole();
-  const { reviews, submitReview } = useStore();
+  const api = useApiClient();
+  // Reviews for the selected submission, read straight through the API hook.
+  const { data: reviewsData, refetch: refetchReviews } = useReviews(
+    submission?.id
+  );
   const [picked, setPicked] = useState<ReviewDecision | null>(null);
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const allowed = canReview({ task, user });
-  const submissionReviews = submission
-    ? reviews
-        .filter((r) => r.submissionId === submission.id)
-        .sort(
-          (a, b) =>
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        )
-    : [];
+  const submissionReviews = (reviewsData ?? [])
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
   const lastReview = submissionReviews[0];
 
   if (!submission) {
@@ -153,16 +157,16 @@ export function ReviewPanel({
     setBusy(true);
     setError(null);
     try {
-      await Promise.resolve(
-        submitReview({
-          submissionId: submission.id,
-          reviewerId: user.id,
-          decision: picked,
-          notes: notes.trim() || undefined,
-        })
-      );
+      await api.createReview({
+        submissionId: submission.id,
+        reviewerId: user.id,
+        decision: picked,
+        notes: notes.trim() || undefined,
+      });
+      emailOnReview(task, picked, notes.trim() || undefined);
       setPicked(null);
       setNotes("");
+      refetchReviews();
       onDecided?.();
     } catch (e) {
       setError(

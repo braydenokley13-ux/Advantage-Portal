@@ -6,12 +6,17 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { useApiClient } from "@/lib/api/provider";
+import { useComments } from "@/lib/hooks";
 import { useStore } from "@/lib/store";
+import { emailOnComment } from "@/lib/email/workflow";
 import { useRole } from "@/lib/role-context";
 import { canComment } from "@/lib/permissions";
 import { initials, cn } from "@/lib/utils";
 import { format } from "date-fns";
 import type { Comment, Submission, Task } from "@/lib/types";
+
+const EMPTY_COMMENTS: Comment[] = [];
 
 export function CommentsPanel({
   task,
@@ -21,7 +26,14 @@ export function CommentsPanel({
   submission?: Submission;
 }) {
   const { user } = useRole();
-  const { comments, users, addComment, toggleResolveComment } = useStore();
+  const api = useApiClient();
+  // Comments for the selected submission via the API hook; users stays on the
+  // store for the sync name lookup.
+  const { data: commentsData, refetch: refetchComments } = useComments(
+    submission?.id
+  );
+  const { users } = useStore();
+  const comments = commentsData ?? EMPTY_COMMENTS;
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +46,8 @@ export function CommentsPanel({
     setResolvingId(id);
     setError(null);
     try {
-      await Promise.resolve(toggleResolveComment(id));
+      await api.toggleResolveComment(id);
+      refetchComments();
     } catch (e) {
       setError(
         e instanceof Error
@@ -73,15 +86,15 @@ export function CommentsPanel({
     setBusy(true);
     setError(null);
     try {
-      await Promise.resolve(
-        addComment({
-          submissionId: submission.id,
-          authorId: user.id,
-          body: draft.trim(),
-          inline: false,
-        })
-      );
+      await api.createComment({
+        submissionId: submission.id,
+        authorId: user.id,
+        body: draft.trim(),
+        inline: false,
+      });
+      emailOnComment(task, user.id);
       setDraft("");
+      refetchComments();
     } catch (e) {
       setError(
         e instanceof Error
@@ -235,9 +248,10 @@ export function CommentsPanel({
                     </div>
                     <button
                       type="button"
-                      onClick={() => toggleResolveComment(c.id)}
+                      onClick={() => resolve(c.id)}
+                      disabled={resolvingId === c.id}
                       className={cn(
-                        "text-[10px] flex items-center gap-1 rounded-md px-1.5 py-0.5",
+                        "text-[10px] flex items-center gap-1 rounded-md px-1.5 py-0.5 disabled:opacity-50",
                         c.resolved
                           ? "bg-emerald-100 text-emerald-700"
                           : "text-muted-foreground hover:bg-accent"
