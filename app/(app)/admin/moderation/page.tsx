@@ -30,12 +30,18 @@ import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { useRole } from "@/lib/role-context";
 import { useApiClient } from "@/lib/api/provider";
-import { useStore } from "@/lib/store";
-import { useModerationReports } from "@/lib/hooks";
+import {
+  useMessages,
+  useModerationReports,
+  useRealtimeRefetch,
+  useUsers,
+} from "@/lib/hooks";
 import { canModerate } from "@/lib/permissions";
 import type {
+  MessageZ,
   ModerationReportZ,
   ModerationStatusZ,
+  UserZ,
 } from "@/lib/contracts";
 import type { ModerationReason } from "@/lib/types";
 import { initials, cn } from "@/lib/utils";
@@ -62,11 +68,18 @@ const STATUS_TONE: Record<
 };
 
 const EMPTY_REPORTS: ModerationReportZ[] = [];
+const EMPTY_MESSAGES: MessageZ[] = [];
+const EMPTY_USERS: UserZ[] = [];
 
 export default function ModerationPage() {
   const { role, user } = useRole();
   const api = useApiClient();
-  const { users, messages } = useStore();
+  // Users and chat messages back the report rows; both read through the API
+  // hooks now. Realtime keeps the queue and the reported message bodies live.
+  const { data: usersData } = useUsers();
+  const { data: messagesData, refetch: refetchMessages } = useMessages();
+  const users = usersData ?? EMPTY_USERS;
+  const messages = messagesData ?? EMPTY_MESSAGES;
   const [tab, setTab] = useState<Tab>("open");
   const filterStatus = tab === "all" ? undefined : tab;
   const { data: reportsData, refetch } = useModerationReports(
@@ -78,8 +91,14 @@ export default function ModerationPage() {
   const [openReportId, setOpenReportId] = useState<string | null>(null);
 
   // Always read all reports for stat cards (independent of tab filter).
-  const { data: allReportsData } = useModerationReports();
+  const { data: allReportsData, refetch: refetchAll } = useModerationReports();
   const allReports = allReportsData ?? EMPTY_REPORTS;
+
+  useRealtimeRefetch(["moderation_reports"], () => {
+    refetch();
+    refetchAll();
+  });
+  useRealtimeRefetch(["messages"], refetchMessages);
 
   const stats = useMemo(() => {
     const open = allReports.filter((r) => r.status === "open").length;
@@ -388,6 +407,9 @@ export default function ModerationPage() {
       <ReportDetailDialog
         key={selectedReport?.id ?? "no-report"}
         report={selectedReport ?? null}
+        users={users}
+        messages={messages}
+        onMessageHidden={refetchMessages}
         onClose={() => {
           setOpenReportId(null);
           refetch();
@@ -399,14 +421,19 @@ export default function ModerationPage() {
 
 function ReportDetailDialog({
   report,
+  users,
+  messages,
+  onMessageHidden,
   onClose,
 }: {
   report: ModerationReportZ | null;
+  users: UserZ[];
+  messages: MessageZ[];
+  onMessageHidden: () => void;
   onClose: () => void;
 }) {
   const { user } = useRole();
   const api = useApiClient();
-  const { users, messages, hideMessage: storeHide } = useStore();
   const [note, setNote] = useState(report?.internalNote ?? "");
   const [busy, setBusy] = useState(false);
 
@@ -443,8 +470,9 @@ function ReportDetailDialog({
     setBusy(true);
     try {
       await api.hideMessage(message.id);
-      // ensure mock store reflects too if running mock
-      storeHide(message.id);
+      // Refetch the message list so the dialog (and the queue) reflect the new
+      // hidden state. Realtime also fans this out to other moderators.
+      onMessageHidden();
     } finally {
       setBusy(false);
     }

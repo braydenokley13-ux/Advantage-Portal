@@ -218,10 +218,53 @@ matching the `SensitivePanel` / `EditorialChecklist` pattern from phase 4.
   `useRealtimeRefetch`. Migration `0010_realtime_review_loop.sql` adds those
   tables to the `supabase_realtime` publication.
 
+## Phase 7 update — messages, moderation & extensions off the store (this update)
+
+The last write surfaces that still went through `useStore` now write through the
+API client directly and read through the data hooks, matching the phase-6
+review-loop pattern. The store no longer mediates chat, moderation, or
+extension writes — and no longer caches `conversations` / `messages` at all.
+
+- **Messages.** `ChatView`, `ConversationList`, and the announcements composer
+  read conversations + messages via `useConversations` / `useMessages` and send
+  / pin / create through `useApiClient()`, refetching focused state after each
+  write. `MessagesPage` and the top-bar search read conversations via the hook
+  too. Each chat surface pairs its reads with `useRealtimeRefetch` so a thread
+  stays live when another member posts — chat that previously only updated on a
+  full store re-hydrate is now genuinely realtime.
+- **Moderation.** The queue reads reported messages + users via `useMessages` /
+  `useUsers` and subscribes to `moderation_reports` and `messages`. Hiding a
+  message refetches the message list instead of poking the store; the
+  report-from-chat flow still emails admins/leaders, now via
+  `lib/email/workflow.ts`.
+- **Extensions.** The task drawer requests and decides extensions through the
+  API client and refetches tasks via the existing `afterTaskWrite` path. The
+  "extension requested → leaders" and "decision → writer" emails moved to
+  `lib/email/workflow.ts` so they survive off the store.
+- **Store cleanup.** `sendMessage`, `togglePinMessage`, `createConversation`,
+  `requestExtension`, `decideExtension`, `createModerationReport`,
+  `updateModerationReport`, and `hideMessage` are gone from `StoreProvider`,
+  along with the `conversations` and `messages` collections it used to hydrate.
+- Migration `0011_realtime_messages_moderation.sql` adds `messages`,
+  `conversations`, and `moderation_reports` to the `supabase_realtime`
+  publication (idempotent) and sets `REPLICA IDENTITY FULL`. RLS still governs
+  what each subscriber receives.
+
+Still on the store after this phase: the task board (`setTaskStatus`), task
+create/update (`createTask` / `updateTask`), user administration
+(`updateUserRole` / `setUserActive`), and the notifications surface
+(`markNotificationRead` / `markAllRead` / `pushNotification`). These are the
+next migration candidates. The newsroom mutators the store still exposes
+(pitch / issue / checklist / sensitive-flag writes) are already unused by the
+UI — the pages call the API client directly — so they can be pruned whenever
+the store is next touched.
+
 ## Future work
 
-- Migrate the remaining store writes (messages, moderation, extensions) onto
-  hooks; the review loop and newsroom planning are now done.
+- Migrate the remaining store writes (task board + CRUD, user admin,
+  notifications) onto hooks, and prune the now-unused newsroom mutators from
+  `StoreProvider`. Chat, moderation, extensions, the review loop, and newsroom
+  planning reads are now off the store.
 - Per-stage SLAs and escalation-on-delay.
 - Photo/visual asset model and rights tracking.
 - Public-site sync (theadvantagejournal.org) for `published` stories.

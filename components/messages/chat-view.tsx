@@ -28,13 +28,22 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/select";
-import { useStore } from "@/lib/store";
+import {
+  useConversations,
+  useMessages,
+  useRealtimeRefetch,
+  useUsers,
+} from "@/lib/hooks";
 import { useRole } from "@/lib/role-context";
 import { useApiClient } from "@/lib/api/provider";
+import { emailOnModerationReport } from "@/lib/email/workflow";
 import { canModerate, canPostInConversation } from "@/lib/permissions";
 import { initials, cn } from "@/lib/utils";
 import { format, isSameDay } from "date-fns";
-import type { ModerationReason } from "@/lib/types";
+import type { Message, ModerationReason, User } from "@/lib/types";
+
+const EMPTY_MESSAGES: Message[] = [];
+const EMPTY_USERS: User[] = [];
 
 export function ChatView({
   conversationId,
@@ -44,8 +53,18 @@ export function ChatView({
   onBack?: () => void;
 }) {
   const { user, role } = useRole();
-  const { conversations, messages, users, sendMessage } = useStore();
   const api = useApiClient();
+  // Conversations + this thread's messages read through the API hooks; realtime
+  // keeps the thread live when another member posts (or a moderator hides a
+  // message). The send path writes via the client and refetches focused state.
+  const { data: conversationsData } = useConversations();
+  const { data: usersData } = useUsers();
+  const { data: messagesData, refetch: refetchMessages } =
+    useMessages(conversationId);
+  useRealtimeRefetch(["messages"], refetchMessages);
+  const conversations = conversationsData ?? [];
+  const users = usersData ?? EMPTY_USERS;
+  const messages = messagesData ?? EMPTY_MESSAGES;
   const conversation = conversations.find((c) => c.id === conversationId);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -91,16 +110,17 @@ export function ChatView({
         )
       : undefined;
 
-  function send() {
+  async function send() {
     if (sending || !draft.trim() || !canPost) return;
     setSending(true);
     try {
-      sendMessage({
+      await api.sendMessage({
         conversationId: conversation!.id,
         authorId: user.id,
         body: draft.trim(),
       });
       setDraft("");
+      refetchMessages();
     } finally {
       setSending(false);
     }
@@ -117,6 +137,7 @@ export function ChatView({
       reason: input.reason,
       reporterNote: input.note.trim() || undefined,
     });
+    emailOnModerationReport(users, user.id, input.note.trim() || undefined);
     setReportedIds((prev) => {
       const next = new Set(prev);
       next.add(input.messageId);

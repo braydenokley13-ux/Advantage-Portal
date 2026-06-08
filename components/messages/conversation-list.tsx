@@ -21,7 +21,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useStore } from "@/lib/store";
+import {
+  useConversations,
+  useMessages,
+  useRealtimeRefetch,
+  useUsers,
+} from "@/lib/hooks";
+import { useApiClient } from "@/lib/api/provider";
 import { useRole } from "@/lib/role-context";
 import {
   canCreateConversation,
@@ -49,7 +55,20 @@ export function ConversationList({
   onSelect: (id: string) => void;
 }) {
   const { user, role } = useRole();
-  const { conversations, messages, users, createConversation } = useStore();
+  const api = useApiClient();
+  // Conversations + last-message previews read through the API hooks; realtime
+  // keeps the inbox live as new threads and messages land.
+  const { data: conversationsData, refetch: refetchConversations } =
+    useConversations();
+  const { data: messagesData, refetch: refetchMessages } = useMessages();
+  const { data: usersData } = useUsers();
+  useRealtimeRefetch(["conversations", "messages"], () => {
+    refetchConversations();
+    refetchMessages();
+  });
+  const conversations = conversationsData ?? [];
+  const messages = messagesData ?? [];
+  const users = usersData ?? [];
   const [filter, setFilter] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -159,7 +178,8 @@ export function ConversationList({
         canCreateGroup={canCreateConversation(role, "group")}
         canCreateIssue={canCreateConversation(role, "issue")}
         onCreate={async (input) => {
-          const conv = await createConversation(input);
+          const conv = await api.createConversation(input);
+          refetchConversations();
           onSelect(conv.id);
         }}
       />
@@ -347,7 +367,8 @@ function NewConversationDialog({
 }
 
 function ConversationAvatar({ conversation }: { conversation: Conversation }) {
-  const { users } = useStore();
+  const { data: usersData } = useUsers();
+  const users = usersData ?? [];
   const { user: me } = useRole();
 
   if (conversation.kind === "dm") {
