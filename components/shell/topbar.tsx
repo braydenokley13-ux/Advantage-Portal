@@ -12,10 +12,14 @@ import { Input } from "@/components/ui/input";
 import { UserMenu } from "./user-menu";
 import { NotificationsPopover } from "@/components/notifications/notifications-popover";
 import { useStore } from "@/lib/store";
+import { useConversations } from "@/lib/hooks";
 import { useRole } from "@/lib/role-context";
 import { visibleConversations } from "@/lib/permissions";
 import { visibleTasks } from "@/lib/visibility";
 import { cn } from "@/lib/utils";
+import type { Conversation } from "@/lib/types";
+
+const EMPTY_CONVERSATIONS: Conversation[] = [];
 
 type SearchResult = {
   id: string;
@@ -34,7 +38,9 @@ const PER_GROUP = 5;
 export function Topbar() {
   const router = useRouter();
   const { user, role } = useRole();
-  const { tasks, users, conversations } = useStore();
+  const { tasks, users } = useStore();
+  const { data: conversationsData } = useConversations();
+  const conversations = conversationsData ?? EMPTY_CONVERSATIONS;
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);

@@ -36,6 +36,11 @@ import { EditorialChecklist } from "./editorial-checklist";
 import { SensitivePanel } from "./sensitive-panel";
 import { useEditorialChecklist, useSubmissions, useTasks } from "@/lib/hooks";
 import { useStore } from "@/lib/store";
+import { useApiClient } from "@/lib/api/provider";
+import {
+  emailOnExtensionDecision,
+  emailOnExtensionRequest,
+} from "@/lib/email/workflow";
 import { useRole } from "@/lib/role-context";
 import { canEditTask, canReview, canSubmit } from "@/lib/permissions";
 import { STATUS_LABELS } from "@/lib/kanban-rules";
@@ -80,10 +85,10 @@ export function TaskDrawer({
   const { data: submissionsData, refetch: refetchSubmissions } = useSubmissions(
     taskId ?? undefined
   );
-  // Sync caches kept on the store: users, sections, issues, and the existing
-  // extension-request mutators (unchanged this phase).
-  const { users, sections, issues, requestExtension, decideExtension } =
-    useStore();
+  // Sync caches kept on the store: users, sections, and issues are stable
+  // lookups read from the live store cache.
+  const { users, sections, issues } = useStore();
+  const api = useApiClient();
   const tasks = tasksData ?? EMPTY_TASKS;
   const submissions = submissionsData ?? EMPTY_SUBMISSIONS;
   // After a submission or review, the task status and submission set both
@@ -91,6 +96,33 @@ export function TaskDrawer({
   const afterTaskWrite = () => {
     refetchSubmissions();
     refetchTasks();
+  };
+  // Extension request/decision now write through the API client directly (like
+  // the submission/review loop) and refetch tasks so the drawer reflects the
+  // new deadline or pending banner. The fan-out emails the store used to send
+  // are preserved via lib/email/workflow.
+  const requestExtension = async (input: {
+    taskId: string;
+    requestedById: string;
+    newDeadline: string;
+    reason: string;
+  }) => {
+    const req = await api.requestExtension(input);
+    emailOnExtensionRequest(users, input.reason);
+    afterTaskWrite();
+    return req;
+  };
+  const decideExtension = async (input: {
+    taskId: string;
+    decidedById: string;
+    approve: boolean;
+  }) => {
+    // Capture the task as it looks *before* the decision so the pending
+    // request's requester is still attached for the notification.
+    const target = tasks.find((t) => t.id === input.taskId);
+    await api.decideExtension(input);
+    if (target) emailOnExtensionDecision(target, input.approve);
+    afterTaskWrite();
   };
   const { user } = useRole();
   const [extOpen, setExtOpen] = useState(false);

@@ -9,26 +9,41 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { PageHeader } from "@/components/page-header";
 import { useStore } from "@/lib/store";
+import { useApiClient } from "@/lib/api/provider";
+import {
+  useConversations,
+  useMessages,
+  useRealtimeRefetch,
+  useUsers,
+} from "@/lib/hooks";
 import { useRole } from "@/lib/role-context";
 import { canPinMessage, canPostAnnouncement } from "@/lib/permissions";
 import { initials, cn } from "@/lib/utils";
 import { format, formatDistanceToNowStrict } from "date-fns";
+import type { Message } from "@/lib/types";
+
+const EMPTY_MESSAGES: Message[] = [];
 
 export default function AnnouncementsPage() {
   const { user, role } = useRole();
-  const {
-    conversations,
-    messages,
-    users,
-    sendMessage,
-    togglePinMessage,
-    pushNotification,
-  } = useStore();
+  const api = useApiClient();
+  // Notifications still fan out through the store; the all-team thread reads
+  // and writes through the API hooks now, kept live by realtime.
+  const { pushNotification } = useStore();
+  const { data: conversationsData } = useConversations();
+  const { data: usersData } = useUsers();
+  const conversations = conversationsData ?? [];
+  const users = usersData ?? [];
   const [draft, setDraft] = useState("");
   const [pinNew, setPinNew] = useState(true);
   const [busy, setBusy] = useState(false);
 
   const allTeam = conversations.find((c) => c.kind === "all_team");
+  const { data: messagesData, refetch: refetchMessages } = useMessages(
+    allTeam?.id
+  );
+  useRealtimeRefetch(["messages"], refetchMessages);
+  const messages = messagesData ?? EMPTY_MESSAGES;
   const allowPost = canPostAnnouncement(role);
   const allowPin = canPinMessage(role);
 
@@ -50,13 +65,13 @@ export default function AnnouncementsPage() {
     setBusy(true);
     try {
       const body = draft.trim();
-      const m = await sendMessage({
+      const m = await api.sendMessage({
         conversationId: allTeam.id,
         authorId: user.id,
         body,
       });
       if (pinNew && allowPin) {
-        await togglePinMessage(m.id);
+        await api.togglePinMessage(m.id);
       }
       for (const memberId of allTeam.memberIds) {
         if (memberId === user.id) continue;
@@ -68,6 +83,7 @@ export default function AnnouncementsPage() {
         });
       }
       setDraft("");
+      refetchMessages();
     } finally {
       setBusy(false);
     }
@@ -152,7 +168,10 @@ export default function AnnouncementsPage() {
                 }
                 body={m.body}
                 createdAt={m.createdAt}
-                onTogglePin={() => togglePinMessage(m.id)}
+                onTogglePin={async () => {
+                  await api.togglePinMessage(m.id);
+                  refetchMessages();
+                }}
               />
             ))}
           </div>
@@ -186,7 +205,10 @@ export default function AnnouncementsPage() {
                 }
                 body={m.body}
                 createdAt={m.createdAt}
-                onTogglePin={() => togglePinMessage(m.id)}
+                onTogglePin={async () => {
+                  await api.togglePinMessage(m.id);
+                  refetchMessages();
+                }}
               />
             ))}
           </div>

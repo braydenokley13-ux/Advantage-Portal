@@ -5,13 +5,14 @@ import { Inbox } from "lucide-react";
 import { ConversationList } from "@/components/messages/conversation-list";
 import { ChatView } from "@/components/messages/chat-view";
 import { EmptyState } from "@/components/ui/states";
-import { useStore } from "@/lib/store";
+import { useConversations } from "@/lib/hooks";
 import { useRole } from "@/lib/role-context";
 import { visibleConversations } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
 export default function MessagesPage() {
-  const { conversations } = useStore();
+  const { data: conversationsData } = useConversations();
+  const conversations = conversationsData ?? [];
   const { user } = useRole();
   const visible = visibleConversations({ conversations, user });
   const [selectedId, setSelectedId] = useState<string | null>(

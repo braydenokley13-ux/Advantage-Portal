@@ -33,18 +33,12 @@ import { fanOutNotificationEmail } from "./email/notify-client";
 import { SupabaseApiClient } from "./api/supabase-adapter";
 import { ApiError, type ApiClient } from "./api/client";
 import type {
-  Conversation,
   EditorialChecklist,
-  ExtensionRequest,
   Issue,
   IssueSlot,
   IssueSlotPriority,
   IssueStatus,
-  Message,
-  ModerationReason,
   ModerationReport,
-  ModerationSeverity,
-  ModerationStatus,
   Notification,
   NotificationKind,
   Pitch,
@@ -66,8 +60,6 @@ type StoreValue = {
   tasks: Task[];
   submissions: Submission[];
   reviews: Review[];
-  conversations: Conversation[];
-  messages: Message[];
   notifications: Notification[];
   moderationReports: ModerationReport[];
   // ── Newsroom entities ────────────────────────────────────────────────────
@@ -122,17 +114,6 @@ type StoreValue = {
   ) => Promise<void>;
   updateUserRole: (userId: string, role: Role) => Promise<void>;
   setUserActive: (userId: string, active: boolean) => Promise<void>;
-  togglePinMessage: (messageId: string) => Promise<void>;
-  sendMessage: (input: {
-    conversationId: string;
-    authorId: string;
-    body: string;
-  }) => Promise<Message>;
-  createConversation: (input: {
-    kind: Conversation["kind"];
-    title: string;
-    memberIds: string[];
-  }) => Promise<Conversation>;
   markNotificationRead: (id: string, read?: boolean) => Promise<void>;
   markAllRead: (userId: string) => Promise<void>;
   pushNotification: (input: {
@@ -143,34 +124,6 @@ type StoreValue = {
   }) => Promise<void>;
   runDeadlineScan: (input?: { now?: Date }) => DeadlineReminder[];
   resetDeadlineReminders: () => void;
-  requestExtension: (input: {
-    taskId: string;
-    requestedById: string;
-    newDeadline: string;
-    reason: string;
-  }) => Promise<ExtensionRequest>;
-  decideExtension: (input: {
-    taskId: string;
-    decidedById: string;
-    approve: boolean;
-  }) => Promise<void>;
-  createModerationReport: (input: {
-    messageId: string;
-    reporterId: string;
-    reason: ModerationReason;
-    reporterNote?: string;
-    severity?: ModerationSeverity;
-  }) => Promise<ModerationReport | null>;
-  updateModerationReport: (
-    id: string,
-    patch: {
-      status?: ModerationStatus;
-      severity?: ModerationSeverity;
-      internalNote?: string;
-      resolvedById?: string;
-    }
-  ) => Promise<void>;
-  hideMessage: (messageId: string) => Promise<void>;
 
   // ── Newsroom actions ─────────────────────────────────────────────────────
   createPitch: (input: {
@@ -254,8 +207,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [moderationReports, setModerationReports] = useState<ModerationReport[]>(
     []
@@ -278,43 +229,26 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const refresh = useCallback(async () => {
     if (!api) return;
     try {
-      const [
-        u,
-        t,
-        subs,
-        rev,
-        conv,
-        msg,
-        notif,
-        mod,
-        sec,
-        pit,
-        iss,
-        slot,
-        chk,
-      ] = await Promise.all([
-        api.listUsers(),
-        api.listTasks(),
-        api.listSubmissions(),
-        api.listReviews(),
-        api.listConversations(),
-        api.listMessages(),
-        api.listNotifications(),
-        api.listModerationReports(),
-        api.listSections(),
-        api.listPitches(),
-        api.listIssues(),
-        api.listIssueSlots(),
-        api.listChecklists(),
-      ]);
+      const [u, t, subs, rev, notif, mod, sec, pit, iss, slot, chk] =
+        await Promise.all([
+          api.listUsers(),
+          api.listTasks(),
+          api.listSubmissions(),
+          api.listReviews(),
+          api.listNotifications(),
+          api.listModerationReports(),
+          api.listSections(),
+          api.listPitches(),
+          api.listIssues(),
+          api.listIssueSlots(),
+          api.listChecklists(),
+        ]);
       // `listTasks()` already attaches each task's latest sensitive flag,
       // so no separate flag merge is needed here.
       setUsersState(u as User[]);
       setTasks(t as Task[]);
       setSubmissions(subs as Submission[]);
       setReviews(rev as Review[]);
-      setConversations(conv as Conversation[]);
-      setMessages(msg as Message[]);
       setNotifications(notif as Notification[]);
       setModerationReports(mod as ModerationReport[]);
       setSectionsState(sec as Section[]);
@@ -421,8 +355,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       tasks,
       submissions,
       reviews,
-      conversations,
-      messages,
       notifications,
       moderationReports,
       sections: sectionsState,
@@ -454,17 +386,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         updateTask: fail,
         updateUserRole: fail,
         setUserActive: fail,
-        togglePinMessage: fail,
-        sendMessage: fail,
-        createConversation: fail,
         markNotificationRead: fail,
         markAllRead: fail,
         pushNotification: fail,
-        requestExtension: fail,
-        decideExtension: fail,
-        createModerationReport: fail,
-        updateModerationReport: fail,
-        hideMessage: fail,
         createPitch: fail,
         decidePitch: fail,
         convertPitch: fail,
@@ -521,11 +445,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setUserActive: async (id, active) => {
         await persist(api.setUserActive(id, active));
       },
-      togglePinMessage: async (id) => {
-        await persist(api.togglePinMessage(id));
-      },
-      sendMessage: (input) => persist(api.sendMessage(input)),
-      createConversation: (input) => persist(api.createConversation(input)),
       markNotificationRead: async (id, read) => {
         await persist(api.markNotificationRead(id, read));
       },
@@ -552,45 +471,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           title: input.title,
           body: input.body,
         });
-      },
-      requestExtension: async (input) => {
-        const req = await persist(api.requestExtension(input));
-        fanOutNotificationEmail(staff(["leader", "admin"]), {
-          kind: "task_assigned",
-          title: "Extension requested",
-          body: input.reason.slice(0, 120),
-        });
-        return req;
-      },
-      decideExtension: async (input) => {
-        const task = tasks.find((t) => t.id === input.taskId);
-        await persist(api.decideExtension(input));
-        if (task?.extensionRequest) {
-          fanOutNotificationEmail([task.extensionRequest.requestedById], {
-            kind: "task_assigned",
-            title: input.approve
-              ? `Extension approved: ${task.title}`
-              : `Extension denied: ${task.title}`,
-          });
-        }
-      },
-      createModerationReport: async (input) => {
-        const report = await persist(api.createModerationReport(input));
-        fanOutNotificationEmail(
-          staff(["admin", "leader"]).filter((id) => id !== input.reporterId),
-          {
-            kind: "comment",
-            title: "Message reported",
-            body: input.reporterNote?.slice(0, 100),
-          }
-        );
-        return report;
-      },
-      updateModerationReport: async (id, patch) => {
-        await persist(api.updateModerationReport(id, patch));
-      },
-      hideMessage: async (id) => {
-        await persist(api.hideMessage(id));
       },
       createPitch: async (input) => {
         const pitch = await persist(api.createPitch(input));
@@ -681,8 +561,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     tasks,
     submissions,
     reviews,
-    conversations,
-    messages,
     notifications,
     moderationReports,
     sectionsState,
