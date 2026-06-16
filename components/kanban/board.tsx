@@ -30,6 +30,14 @@ export function KanbanBoard() {
     for (const s of submissions) m.set(s.id, s.taskId);
     return m;
   }, [submissions]);
+  // Tasks that already have at least one submitted version. A submission's
+  // presence means there's real content to review, so dragging such a task to
+  // Submitted can flip the status directly instead of routing into the
+  // writer-only composer.
+  const taskIdsWithSubmission = useMemo(
+    () => new Set(submissions.map((s) => s.taskId)),
+    [submissions]
+  );
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [hoveredCol, setHoveredCol] = useState<TaskStatus | null>(null);
   const [blocked, setBlocked] = useState<BlockedToast>(null);
@@ -80,23 +88,34 @@ export function KanbanBoard() {
     if (!task) return;
 
     const isOwn = task.writerId === user.id;
+    // Leaders and admins get full manual control of the board: they can move a
+    // task to any column at any time, bypassing the forward-only state machine
+    // and the review gate. This is the escape hatch for tasks that end up in an
+    // inconsistent state (e.g. a submission that exists but whose status never
+    // advanced) — an admin can always put a story where it belongs.
+    const isAdminLike = role === "leader" || role === "admin";
+    const hasSubmission = taskIdsWithSubmission.has(task.id);
+
     if (!canDropTask({ role, isOwnTask: isOwn, to })) {
       showBlocked(task.title, dropDeniedReason({ role, isOwn, to }));
       return;
     }
-    if (!isValidTransition(task.status, to)) {
+    if (!isAdminLike && !isValidTransition(task.status, to)) {
       showBlocked(task.title, transitionDeniedReason(task.status, to));
       return;
     }
     if (task.status === to) return;
-    if (to === "submitted") {
-      // Drag-to-submit: a submission needs content, so we can't just flip the
-      // status. Open the task on its Submission tab so the writer can confirm
-      // their draft and turn it in (the composer autosaves their work).
+    if (to === "submitted" && !hasSubmission) {
+      // Drag-to-submit with nothing turned in yet: a submission needs content,
+      // so we can't just flip the status. Open the task on its Submission tab
+      // so the writer can confirm their draft and turn it in (the composer
+      // autosaves their work). Once a version exists we fall through and flip
+      // the status directly below — which is how an admin rescues a task whose
+      // submission never advanced it into review.
       setOpenTaskId(task.id);
       return;
     }
-    if (task.status === "submitted" && to === "complete") {
+    if (!isAdminLike && task.status === "submitted" && to === "complete") {
       showBlocked(
         task.title,
         "Submitted work must go through editor review."
