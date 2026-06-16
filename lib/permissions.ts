@@ -18,6 +18,17 @@ export function canReview(args: { task: Task; user: User }): boolean {
   return false;
 }
 
+/**
+ * Leaders and admins can move a task straight to Complete without waiting on a
+ * formal editor review. This is the manual escape hatch for stories that don't
+ * need (or can't wait for) a review decision — mirrors the board's admin drag
+ * to Complete. No-op once the task is already complete.
+ */
+export function canForceComplete(args: { task: Task; user: User }): boolean {
+  if (args.task.status === "complete") return false;
+  return args.user.role === "leader" || args.user.role === "admin";
+}
+
 export function canComment(args: { task: Task; user: User }): boolean {
   // Anyone with visibility into the task can comment on its submissions.
   if (args.user.role === "leader" || args.user.role === "admin") return true;
