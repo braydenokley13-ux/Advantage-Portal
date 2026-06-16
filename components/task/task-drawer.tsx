@@ -461,7 +461,11 @@ export function TaskDrawer({
             </TabsContent>
 
             <TabsContent value="submit" className="mt-4 space-y-5">
-              <SubmissionForm task={task} onSubmitted={afterTaskWrite} />
+              <SubmissionForm
+                key={task.id}
+                task={task}
+                onSubmitted={afterTaskWrite}
+              />
 
               <div className="space-y-2">
                 <h4 className="text-xs uppercase tracking-wide text-muted-foreground font-medium">

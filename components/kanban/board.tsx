@@ -90,10 +90,10 @@ export function KanbanBoard() {
     }
     if (task.status === to) return;
     if (to === "submitted") {
-      showBlocked(
-        task.title,
-        "Use the Submission flow — drag-to-submit is disabled."
-      );
+      // Drag-to-submit: a submission needs content, so we can't just flip the
+      // status. Open the task on its Submission tab so the writer can confirm
+      // their draft and turn it in (the composer autosaves their work).
+      setOpenTaskId(task.id);
       return;
     }
     if (task.status === "submitted" && to === "complete") {
@@ -224,7 +224,7 @@ function emptyHint(status: TaskStatus, role: string): string {
       case "in_progress":
         return "Drag a task here when you start writing.";
       case "submitted":
-        return "Open an In Progress task and click “Submit work” to land it here.";
+        return "Drag an In Progress draft here (or click “Submit work”) to turn it in.";
       case "complete":
         return "Stories appear here once an editor approves them.";
     }
@@ -257,8 +257,8 @@ function dropDeniedReason(args: {
 }
 
 function transitionDeniedReason(from: TaskStatus, to: TaskStatus) {
-  if (from === "in_progress" && to === "submitted")
-    return "Cannot drag into Submitted — use the Submission flow.";
+  if (from === "not_started" && to === "submitted")
+    return "Start the draft first — move it to In Progress, then submit.";
   if (from === "submitted" && to === "complete")
     return "Submitted work must be reviewed by an editor.";
   if (from === "complete") return "Complete tasks cannot be moved.";
