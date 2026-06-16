@@ -10,6 +10,11 @@ import { useApiClient } from "@/lib/api/provider";
 import { emailOnSubmission } from "@/lib/email/workflow";
 import { useRole } from "@/lib/role-context";
 import { canSubmit } from "@/lib/permissions";
+import {
+  SUBMISSION_FILE_ACCEPT,
+  isAcceptableSubmissionUrl,
+  validateSubmissionFile,
+} from "@/lib/submission-validation";
 import type { SubmissionFileMeta, SubmissionType, Task } from "@/lib/types";
 
 export function SubmissionForm({
@@ -49,15 +54,10 @@ export function SubmissionForm({
 
   function disabled() {
     if (tab === "inline") return inline.trim().length === 0;
-    if (tab === "google_doc") {
-      try {
-        const u = new URL(docUrl);
-        return !u.protocol.startsWith("http");
-      } catch {
-        return true;
-      }
-    }
-    if (tab === "file") return fileName.length === 0;
+    if (tab === "google_doc") return !isAcceptableSubmissionUrl(docUrl);
+    // A valid file selection always sets `fileMeta`; guard on it so a stale
+    // filename can never submit without its metadata.
+    if (tab === "file") return fileMeta === null;
     return true;
   }
 
@@ -147,17 +147,31 @@ export function SubmissionForm({
             <input
               id="file-input"
               type="file"
+              accept={SUBMISSION_FILE_ACCEPT}
               className="sr-only"
               onChange={(e) => {
                 const f = e.target.files?.[0];
-                if (f) {
-                  setFileName(f.name);
-                  setFileMeta({
-                    filename: f.name,
-                    mimeType: f.type || "application/octet-stream",
-                    sizeBytes: f.size,
-                  });
+                // Reset the input so re-picking the same file (e.g. to retry
+                // after an error) fires onChange again.
+                e.target.value = "";
+                if (!f) return;
+                const result = validateSubmissionFile({
+                  name: f.name,
+                  size: f.size,
+                });
+                if (!result.ok) {
+                  setFileName("");
+                  setFileMeta(null);
+                  setError(result.error);
+                  return;
                 }
+                setError(null);
+                setFileName(f.name);
+                setFileMeta({
+                  filename: f.name,
+                  mimeType: f.type || "application/octet-stream",
+                  sizeBytes: f.size,
+                });
               }}
             />
           </label>
