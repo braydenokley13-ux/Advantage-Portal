@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TaskDrawer } from "@/components/task/task-drawer";
 import { useApiClient } from "@/lib/api/provider";
+import { emailOnIssuePublished } from "@/lib/email/workflow";
 import {
   useChecklists,
   useIssueSlots,
@@ -88,7 +89,14 @@ export default function IssuesPage() {
   const canShip = role === "leader" || role === "admin";
 
   async function handleShip(issueId: string) {
+    const issue = issues.find((i) => i.id === issueId);
+    // Capture the slate's writers before the refetch so we can congratulate
+    // everyone whose story ran. Publishing flips each slotted task to complete.
+    const writerIds = issueSlots
+      .filter((s) => s.issueId === issueId)
+      .map((s) => tasks.find((t) => t.id === s.taskId)?.writerId);
     await api.publishIssue(issueId);
+    if (issue) emailOnIssuePublished(issue.name, writerIds);
     refetchIssues();
     refetchTasks();
     refetchSlots();

@@ -5,9 +5,10 @@ import type { NotificationKind } from "./types";
 
 /**
  * Which notification kinds are "important" enough to also send an email by
- * default. Chat messages and task-complete pings stay email-quiet to avoid
- * inbox noise — the in-app bell and push cover those. Everything that needs a
- * human to act (assignments, deadlines, submissions, feedback, decisions, and
+ * default. Chat messages stay email-quiet to avoid inbox noise — the in-app
+ * bell and push cover those, and writers can opt in from the preferences
+ * screen. Everything that needs a human to act or marks a milestone
+ * (assignments, deadlines, submissions, feedback, decisions, completions, and
  * team-wide announcements) emails by default.
  */
 export const EMAIL_DEFAULTS: Record<NotificationKind, boolean> = {
@@ -16,7 +17,7 @@ export const EMAIL_DEFAULTS: Record<NotificationKind, boolean> = {
   submission: true,
   comment: true,
   review_decision: true,
-  task_complete: false,
+  task_complete: true,
   message: false,
   announcement: true,
 };
