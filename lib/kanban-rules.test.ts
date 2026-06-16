@@ -66,13 +66,14 @@ describe("canDropTask", () => {
       expect(canDropTask({ role: "editor", isOwnTask: true, to })).toBe(false);
     }
   });
-  it("lets a writer drop their own task only into not_started or in_progress", () => {
+  it("lets a writer drop their own task into not_started, in_progress, or submitted", () => {
     expect(
       canDropTask({ role: "writer", isOwnTask: true, to: "in_progress" })
     ).toBe(true);
+    // Drag-to-submit: the board routes this drop into the submission composer.
     expect(
       canDropTask({ role: "writer", isOwnTask: true, to: "submitted" })
-    ).toBe(false);
+    ).toBe(true);
     expect(
       canDropTask({ role: "writer", isOwnTask: true, to: "complete" })
     ).toBe(false);

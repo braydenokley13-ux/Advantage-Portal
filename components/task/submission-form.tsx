@@ -15,6 +15,13 @@ import {
   isAcceptableSubmissionUrl,
   validateSubmissionFile,
 } from "@/lib/submission-validation";
+import {
+  clearSubmissionDraft,
+  loadSubmissionDraft,
+  saveSubmissionDraft,
+} from "@/lib/draft-store";
+import { countWords, formatReadingTime, wordCountProgress } from "@/lib/word-count";
+import { cn } from "@/lib/utils";
 import type { SubmissionFileMeta, SubmissionType, Task } from "@/lib/types";
 
 export function SubmissionForm({
@@ -30,12 +37,17 @@ export function SubmissionForm({
   const allowed = canSubmit({ task, user });
 
   const [tab, setTab] = useState<SubmissionType>("inline");
-  const [inline, setInline] = useState("");
+  // Seed the inline draft from autosave. The parent remounts this form per
+  // task (key={task.id}), so the lazy initializer restores the right draft.
+  const [inline, setInline] = useState(() => loadSubmissionDraft(task.id));
   const [docUrl, setDocUrl] = useState("");
   const [fileName, setFileName] = useState("");
   const [fileMeta, setFileMeta] = useState<SubmissionFileMeta | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const words = countWords(inline);
+  const progress = wordCountProgress(words, task.wordCountTarget);
 
   if (!allowed) {
     return (
@@ -80,6 +92,7 @@ export function SubmissionForm({
         file: tab === "file" && fileMeta ? fileMeta : undefined,
       });
       emailOnSubmission(task, submission.version);
+      clearSubmissionDraft(task.id);
       setInline("");
       setDocUrl("");
       setFileName("");
@@ -111,13 +124,59 @@ export function SubmissionForm({
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="inline" className="mt-3">
+        <TabsContent value="inline" className="mt-3 space-y-2">
           <Textarea
             value={inline}
-            onChange={(e) => setInline(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              setInline(next);
+              // Autosave so a reload or navigation never loses the draft.
+              saveSubmissionDraft(task.id, next);
+            }}
+            onKeyDown={(e) => {
+              // ⌘/Ctrl+Enter submits, matching the chat composer convention.
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                e.preventDefault();
+                void handleSubmit();
+              }
+            }}
             placeholder="Paste or write your draft here. Markdown supported."
             className="min-h-[180px] font-mono text-[13px]"
           />
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
+            <span className="inline-flex items-center gap-2">
+              <span>
+                {words.toLocaleString()} {words === 1 ? "word" : "words"}
+              </span>
+              <span aria-hidden>·</span>
+              <span>{formatReadingTime(words)}</span>
+              <span aria-hidden>·</span>
+              <span className="hidden sm:inline">⌘/Ctrl+Enter to submit</span>
+            </span>
+            {progress && (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1.5 font-medium",
+                  progress.met ? "text-emerald-600" : "text-amber-600"
+                )}
+              >
+                {progress.met
+                  ? `Target met (${progress.target.toLocaleString()} words)`
+                  : `${Math.abs(progress.remaining).toLocaleString()} to go`}
+              </span>
+            )}
+          </div>
+          {progress && (
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+              <div
+                className={cn(
+                  "h-full rounded-full transition-all",
+                  progress.met ? "bg-emerald-500" : "bg-primary"
+                )}
+                style={{ width: `${progress.pct}%` }}
+              />
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="google_doc" className="mt-3 space-y-2">

@@ -466,6 +466,23 @@ export class SupabaseApiClient implements ApiClient {
     private readonly currentUserId: string | null
   ) {}
 
+  /**
+   * Whether a Supabase error means the called RPC doesn't exist (migration not
+   * applied yet) — PostgREST reports `PGRST202` and Postgres `42883`. Used to
+   * fall back to direct table writes so the workflow keeps working pre-migration.
+   */
+  private isFunctionMissing(error: unknown): boolean {
+    const e = error as { code?: string; message?: string } | null;
+    if (!e) return false;
+    if (e.code === "PGRST202" || e.code === "42883") return true;
+    const msg = (e.message ?? "").toLowerCase();
+    return (
+      msg.includes("could not find the function") ||
+      msg.includes("does not exist") ||
+      msg.includes("schema cache")
+    );
+  }
+
   private err(method: string, cause: unknown): never {
     throw new ApiError(
       `SupabaseApiClient.${method} failed: ${
@@ -754,12 +771,12 @@ export class SupabaseApiClient implements ApiClient {
     content: string;
     file?: { filename: string; mimeType: string; sizeBytes: number };
   }): Promise<SubmissionZ> {
-    // The whole transition — version assignment, demoting the prior current
-    // version, inserting the new one, and advancing the task into review — runs
-    // atomically inside the `create_submission` RPC. That keeps the steps from
-    // tearing on a mid-sequence failure and lets the task status advance even
-    // though `tasks_write` is leader/admin-only (the SECURITY DEFINER function
-    // authorizes the writer itself). `authorId` is implied by auth.uid().
+    // Preferred path: the `create_submission` RPC (migration 0012) runs the
+    // whole transition — version assignment, demoting the prior current
+    // version, inserting the new one, and advancing the task into review —
+    // atomically, and authorizes the writer itself so the task status advances
+    // despite the leader/admin-only `tasks_write` policy. `authorId` is implied
+    // by auth.uid().
     const isFile = input.type === "file";
     const { data, error } = await this.sb.rpc("create_submission", {
       p_task_id: input.taskId,
@@ -769,9 +786,69 @@ export class SupabaseApiClient implements ApiClient {
       p_file_mime_type: isFile ? input.file?.mimeType ?? null : null,
       p_file_size_bytes: isFile ? input.file?.sizeBytes ?? null : null,
     });
-    if (error) this.err("createSubmission", error);
+    if (error) {
+      // If the RPC hasn't been deployed yet, fall back to direct writes so
+      // submissions keep working; surface any other error (e.g. an auth
+      // rejection raised inside the function).
+      if (this.isFunctionMissing(error)) {
+        return this.createSubmissionViaWrites(input);
+      }
+      this.err("createSubmission", error);
+    }
     if (!data) this.err("createSubmission", new Error("No submission returned"));
     return rowToSubmission(data as SubmissionRow);
+  }
+
+  /**
+   * Legacy multi-step submission write, used only when the `create_submission`
+   * RPC isn't available. Not atomic, and the task-status advance depends on the
+   * caller's `tasks_write` rights — deploy migration 0012 for the correct path.
+   */
+  private async createSubmissionViaWrites(input: {
+    taskId: string;
+    type: SubmissionZ["type"];
+    content: string;
+    file?: { filename: string; mimeType: string; sizeBytes: number };
+  }): Promise<SubmissionZ> {
+    const { count, error: cErr } = await this.sb
+      .from("submissions")
+      .select("id", { count: "exact", head: true })
+      .eq("task_id", input.taskId);
+    if (cErr) this.err("createSubmission(count)", cErr);
+    const version = (count ?? 0) + 1;
+
+    const { error: dErr } = await this.sb
+      .from("submissions")
+      .update({ is_current: false })
+      .eq("task_id", input.taskId)
+      .eq("is_current", true);
+    if (dErr) this.err("createSubmission(demote)", dErr);
+
+    const isFile = input.type === "file";
+    const { data, error } = await this.sb
+      .from("submissions")
+      .insert({
+        task_id: input.taskId,
+        type: input.type,
+        version,
+        content: input.content,
+        file_filename: isFile ? input.file?.filename ?? null : null,
+        file_mime_type: isFile ? input.file?.mimeType ?? null : null,
+        file_size_bytes: isFile ? input.file?.sizeBytes ?? null : null,
+        is_current: true,
+      })
+      .select(SUBMISSION_COLUMNS)
+      .single();
+    if (error) this.err("createSubmission(insert)", error);
+    const submission = rowToSubmission(data as SubmissionRow);
+
+    const { error: tErr } = await this.sb
+      .from("tasks")
+      .update({ status: "submitted", current_submission_id: submission.id })
+      .eq("id", input.taskId);
+    if (tErr) this.err("createSubmission(task)", tErr);
+
+    return submission;
   }
 
   async listReviews(submissionId?: string): Promise<ReviewZ[]> {
@@ -799,9 +876,60 @@ export class SupabaseApiClient implements ApiClient {
       p_decision: input.decision,
       p_notes: input.notes ?? null,
     });
-    if (error) this.err("createReview", error);
+    if (error) {
+      if (this.isFunctionMissing(error)) {
+        return this.createReviewViaWrites(input);
+      }
+      this.err("createReview", error);
+    }
     if (!data) this.err("createReview", new Error("No review returned"));
     return rowToReview(data as ReviewRow);
+  }
+
+  /**
+   * Legacy multi-step review write, used only when the `create_review` RPC
+   * isn't available. The task-status roll depends on the caller's `tasks_write`
+   * rights — deploy migration 0012 for the correct path.
+   */
+  private async createReviewViaWrites(input: {
+    submissionId: string;
+    reviewerId: string;
+    decision: ReviewZ["decision"];
+    notes?: string;
+  }): Promise<ReviewZ> {
+    const { data, error } = await this.sb
+      .from("reviews")
+      .insert({
+        submission_id: input.submissionId,
+        reviewer_id: input.reviewerId,
+        decision: input.decision,
+        notes: input.notes ?? null,
+      })
+      .select(REVIEW_COLUMNS)
+      .single();
+    if (error) this.err("createReview(insert)", error);
+    const review = rowToReview(data as ReviewRow);
+
+    const { data: sub, error: sErr } = await this.sb
+      .from("submissions")
+      .select("task_id")
+      .eq("id", input.submissionId)
+      .maybeSingle();
+    if (sErr) this.err("createReview(submission)", sErr);
+    const taskId = (sub as { task_id: string } | null)?.task_id;
+    if (taskId) {
+      const nextStatus: TaskZ["status"] =
+        input.decision === "approved" || input.decision === "rejected"
+          ? "complete"
+          : "in_progress";
+      const { error: tErr } = await this.sb
+        .from("tasks")
+        .update({ status: nextStatus })
+        .eq("id", taskId);
+      if (tErr) this.err("createReview(task)", tErr);
+    }
+
+    return review;
   }
 
   async listComments(submissionId?: string): Promise<CommentZ[]> {

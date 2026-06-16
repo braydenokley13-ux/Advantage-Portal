@@ -21,7 +21,8 @@ export const STATUS_LABELS: Record<TaskStatus, string> = {
 
 /**
  * Drag rules per role per master plan:
- * - writer: only own tasks; only between not_started <-> in_progress
+ * - writer: only own tasks; not_started <-> in_progress, plus dragging an
+ *   in-progress draft toward Submitted as a shortcut into the submit composer
  * - editor: no dragging
  * - leader/admin: full control
  */
@@ -48,7 +49,15 @@ export function canDropTask(args: {
   if (args.role === "editor") return false;
   if (args.role === "writer") {
     if (!args.isOwnTask) return false;
-    return args.to === "not_started" || args.to === "in_progress";
+    // Writers self-serve Not Started ⇄ In Progress, and may drop onto
+    // Submitted to open the submission composer (a submission needs content,
+    // so the board routes the drop into the submit flow rather than a raw
+    // status flip — see KanbanBoard.handleDrop).
+    return (
+      args.to === "not_started" ||
+      args.to === "in_progress" ||
+      args.to === "submitted"
+    );
   }
   return false;
 }

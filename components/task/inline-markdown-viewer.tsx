@@ -13,6 +13,7 @@ import { emailOnComment } from "@/lib/email/workflow";
 import { useRole } from "@/lib/role-context";
 import { canComment } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
+import { countWords, formatReadingTime } from "@/lib/word-count";
 import { format } from "date-fns";
 import type { Comment, Submission, Task } from "@/lib/types";
 
@@ -43,6 +44,10 @@ export function InlineMarkdownViewer({
 
   const lines = useMemo(
     () => submission.content.split(/\r?\n/),
+    [submission.content]
+  );
+  const words = useMemo(
+    () => countWords(submission.content),
     [submission.content]
   );
 
@@ -118,7 +123,9 @@ export function InlineMarkdownViewer({
         <div className="flex items-center gap-2">
           <Badge variant="secondary">Inline · v{submission.version}</Badge>
           <span className="text-[11px] text-muted-foreground">
-            {lines.length} {lines.length === 1 ? "line" : "lines"}
+            {words.toLocaleString()} {words === 1 ? "word" : "words"} ·{" "}
+            {formatReadingTime(words)} · {lines.length}{" "}
+            {lines.length === 1 ? "line" : "lines"}
           </span>
         </div>
         {allowed && (
