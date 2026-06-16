@@ -4,6 +4,7 @@ import {
   canCreateConversation,
   canCreateTask,
   canEditTask,
+  canForceComplete,
   canManageUsers,
   canModerate,
   canPinMessage,
@@ -62,6 +63,30 @@ describe("canReview", () => {
   it("never lets a writer review their own task", () => {
     const task = makeTask({ status: "submitted", writerId: "writer-1" });
     expect(canReview({ task, user: users.writer })).toBe(false);
+  });
+});
+
+describe("canForceComplete", () => {
+  it("lets leader and admin complete an unfinished task without review", () => {
+    const task = makeTask({ status: "submitted" });
+    expect(canForceComplete({ task, user: users.leader })).toBe(true);
+    expect(canForceComplete({ task, user: users.admin })).toBe(true);
+  });
+  it("works from any non-complete status", () => {
+    for (const status of ["not_started", "in_progress", "submitted"] as const) {
+      expect(
+        canForceComplete({ task: makeTask({ status }), user: users.admin })
+      ).toBe(true);
+    }
+  });
+  it("blocks writers and editors", () => {
+    const task = makeTask({ status: "submitted", editorId: "editor-1" });
+    expect(canForceComplete({ task, user: users.writer })).toBe(false);
+    expect(canForceComplete({ task, user: users.editor })).toBe(false);
+  });
+  it("is a no-op once the task is already complete", () => {
+    const task = makeTask({ status: "complete" });
+    expect(canForceComplete({ task, user: users.admin })).toBe(false);
   });
 });
 

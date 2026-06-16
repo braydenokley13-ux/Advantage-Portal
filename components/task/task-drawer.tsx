@@ -42,7 +42,12 @@ import {
   emailOnExtensionRequest,
 } from "@/lib/email/workflow";
 import { useRole } from "@/lib/role-context";
-import { canEditTask, canReview, canSubmit } from "@/lib/permissions";
+import {
+  canEditTask,
+  canForceComplete,
+  canReview,
+  canSubmit,
+} from "@/lib/permissions";
 import { STATUS_LABELS } from "@/lib/kanban-rules";
 import { STATUS_DEFINITIONS } from "@/lib/status";
 import {
@@ -87,7 +92,7 @@ export function TaskDrawer({
   );
   // Sync caches kept on the store: users, sections, and issues are stable
   // lookups read from the live store cache.
-  const { users, sections, issues } = useStore();
+  const { users, sections, issues, setTaskStatus } = useStore();
   const api = useApiClient();
   const tasks = tasksData ?? EMPTY_TASKS;
   const submissions = submissionsData ?? EMPTY_SUBMISSIONS;
@@ -498,6 +503,27 @@ export function TaskDrawer({
                 submission={selected}
                 onDecided={afterTaskWrite}
               />
+
+              {canForceComplete({ task, user }) && (
+                <div className="rounded-lg border border-dashed border-border bg-secondary/40 p-3 space-y-2">
+                  <p className="text-xs font-medium">Admin override</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Mark this story Complete without waiting on an editor
+                    review. Use this when the piece doesn&rsquo;t need a formal
+                    review decision.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={async () => {
+                      await setTaskStatus(task.id, "complete");
+                      afterTaskWrite();
+                    }}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Mark complete
+                  </Button>
+                </div>
+              )}
 
               {taskSubmissions.length > 1 && (
                 <div>
