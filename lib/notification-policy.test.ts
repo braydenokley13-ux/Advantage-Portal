@@ -24,15 +24,17 @@ describe("EMAIL_DEFAULTS", () => {
     }
   });
 
-  it("emails the important workflow events and stays quiet on chat noise", () => {
+  it("emails the important workflow events and milestones, staying quiet only on chat noise", () => {
     expect(EMAIL_DEFAULTS.task_assigned).toBe(true);
     expect(EMAIL_DEFAULTS.deadline).toBe(true);
     expect(EMAIL_DEFAULTS.submission).toBe(true);
     expect(EMAIL_DEFAULTS.comment).toBe(true);
     expect(EMAIL_DEFAULTS.review_decision).toBe(true);
     expect(EMAIL_DEFAULTS.announcement).toBe(true);
+    // Completions/publishing are milestones worth an email.
+    expect(EMAIL_DEFAULTS.task_complete).toBe(true);
+    // Per-message chat emails would be pure noise; opt-in via preferences.
     expect(EMAIL_DEFAULTS.message).toBe(false);
-    expect(EMAIL_DEFAULTS.task_complete).toBe(false);
   });
 });
 

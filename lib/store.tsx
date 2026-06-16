@@ -30,6 +30,7 @@ import {
 import { getSupabaseBrowserClient } from "./supabase/browser";
 import { useRealtimeRefetch } from "./hooks/use-realtime";
 import { fanOutNotificationEmail } from "./email/notify-client";
+import { emailOnTaskCompleted, emailOnTaskEdited } from "./email/workflow";
 import { SupabaseApiClient } from "./api/supabase-adapter";
 import { ApiError, type ApiClient } from "./api/client";
 import type {
@@ -417,7 +418,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return {
       ...collections,
       setTaskStatus: async (id, status) => {
+        const before = tasks.find((t) => t.id === id);
         await persist(api.setTaskStatus(id, status));
+        // Manual completions (board drag / admin action) don't run through the
+        // review-approval email path, so surface the milestone here. Only fire
+        // on the transition *into* complete to avoid duplicate pings.
+        if (status === "complete" && before && before.status !== "complete") {
+          emailOnTaskCompleted(before);
+        }
       },
       createTask: async (input) => {
         const task = await persist(api.createTask(input));
@@ -437,7 +445,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return task;
       },
       updateTask: async (id, patch) => {
-        await persist(api.updateTask(id, patch));
+        const previous = tasks.find((t) => t.id === id);
+        const next = await persist(api.updateTask(id, patch));
+        // Notify on reassignment or a moved deadline so the new writer/editor
+        // (or everyone affected by a schedule change) hears about it.
+        if (previous && next) {
+          emailOnTaskEdited({ previous, next: next as Task });
+        }
       },
       updateUserRole: async (id, role) => {
         await persist(api.updateUserRole(id, role));

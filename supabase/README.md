@@ -8,6 +8,7 @@ This directory holds the SQL schema for the Advantage Journal portal and a demo 
 - `migrations/0002_newsroom_workflow.sql` — newsroom workflow tables (sections, issues, pitches, slots, checklists, sensitive flags) and optional task columns.
 - `migrations/0003_newsroom_rls.sql` — RLS policies for the newsroom workflow tables.
 - `migrations/0004_auth_user_sync.sql` — trigger that mirrors every new `auth.users` row into `public.users` so RLS and `current_app_role()` work after signup. Required before enabling Supabase Auth in production.
+- `migrations/0012_submission_review_rpc.sql` — atomic `create_submission` / `create_review` RPCs (SECURITY DEFINER). They run the whole submission/review → task-status transition in one transaction and authorize the writer/editor in-function, so the task status advances even though `tasks_write` is leader/admin-only. **Required** — without it, a writer's submission never moves the task to `submitted` and an assigned editor's decision never closes it.
 - `seed.sql` / `seed_newsroom.sql` — optional demo data for poking around before real users exist.
 
 > ⚠️ Run the seed files only against dev / staging projects. They overwrite section metadata. There is no production guard in the SQL — gate it with your env.

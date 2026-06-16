@@ -30,6 +30,7 @@ import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { useRole } from "@/lib/role-context";
 import { useApiClient } from "@/lib/api/provider";
+import { emailOnModerationResolved } from "@/lib/email/workflow";
 import {
   useMessages,
   useModerationReports,
@@ -160,6 +161,14 @@ export default function ModerationPage() {
       status,
       resolvedById: user.id,
     });
+    // Close the loop for reporters once a report reaches a terminal state.
+    if (status === "resolved" || status === "dismissed") {
+      emailOnModerationResolved(
+        reports
+          .filter((r) => selectedIds.has(r.id))
+          .map((r) => r.reporterId)
+      );
+    }
     clearSelection();
     refetch();
   }
@@ -459,6 +468,9 @@ function ReportDetailDialog({
         internalNote: note.trim() || undefined,
         resolvedById: user.id,
       });
+      if (status === "resolved" || status === "dismissed") {
+        emailOnModerationResolved([report!.reporterId]);
+      }
       onClose();
     } finally {
       setBusy(false);
