@@ -8,7 +8,6 @@ import {
   format,
   isSameDay,
   isSameMonth,
-  isPast,
   startOfMonth,
   startOfWeek,
   subMonths,
@@ -16,6 +15,7 @@ import {
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { isTaskOverdue } from "@/lib/status";
 import type { Task } from "@/lib/types";
 
 const COLOR_CHIP: Record<Task["color"], string> = {
@@ -130,8 +130,7 @@ export function MonthView({
 
                 <div className="flex flex-col gap-1">
                   {dayTasks.slice(0, 3).map((t) => {
-                    const overdue =
-                      isPast(new Date(t.deadline)) && t.status !== "complete";
+                    const overdue = isTaskOverdue(t);
                     return (
                       <button
                         key={t.id}

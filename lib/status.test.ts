@@ -3,6 +3,7 @@ import {
   STATUS_DEFINITIONS,
   SUBSTATE_LABEL,
   deriveSubState,
+  isTaskOverdue,
 } from "./status";
 import { makeTask } from "./test-fixtures";
 import type { Review, TaskStatus } from "./types";
@@ -30,6 +31,35 @@ describe("STATUS_DEFINITIONS", () => {
   it("maps submitted to a warning tone and complete to success", () => {
     expect(STATUS_DEFINITIONS.submitted.badgeTone).toBe("warning");
     expect(STATUS_DEFINITIONS.complete.badgeTone).toBe("success");
+  });
+});
+
+describe("isTaskOverdue", () => {
+  const past = "2020-01-01T00:00:00.000Z";
+  const future = "2999-01-01T00:00:00.000Z";
+
+  it("flags a past-deadline draft that hasn't been turned in", () => {
+    expect(
+      isTaskOverdue(makeTask({ status: "not_started", deadline: past }))
+    ).toBe(true);
+    expect(
+      isTaskOverdue(makeTask({ status: "in_progress", deadline: past }))
+    ).toBe(true);
+  });
+
+  it("never flags a submitted or complete task, even past deadline", () => {
+    expect(
+      isTaskOverdue(makeTask({ status: "submitted", deadline: past }))
+    ).toBe(false);
+    expect(
+      isTaskOverdue(makeTask({ status: "complete", deadline: past }))
+    ).toBe(false);
+  });
+
+  it("does not flag a draft whose deadline is still in the future", () => {
+    expect(
+      isTaskOverdue(makeTask({ status: "in_progress", deadline: future }))
+    ).toBe(false);
   });
 });
 

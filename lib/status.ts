@@ -15,6 +15,25 @@ import type { Review, Task, TaskStatus } from "./types";
 export type StatusBadgeTone = "default" | "secondary" | "warning" | "success";
 
 /**
+ * Is the task's deadline blown *for the writer*?
+ *
+ * The deadline is the writer's bar: turn a draft in by this date. Once the
+ * writer submits (`submitted`) or the task is closed (`complete`), the ball is
+ * in the editor's court and the deadline no longer applies — so we stop
+ * flagging it as overdue. Overdue therefore only means "a draft is still owed
+ * and the date has passed," i.e. status is `not_started` or `in_progress`.
+ *
+ * This is the single source of truth for the red "Overdue" badge across the
+ * board, calendar, dashboard, and task drawer. Review-SLA logic ("this
+ * submission has sat in review too long") is a separate concern and lives with
+ * the reviews surface, not here.
+ */
+export function isTaskOverdue(task: Task, now: Date = new Date()): boolean {
+  if (task.status === "submitted" || task.status === "complete") return false;
+  return new Date(task.deadline).getTime() < now.getTime();
+}
+
+/**
  * Display rules per status. A single source of truth for labels, short
  * teen-readable definitions, and the suggested next action.
  */

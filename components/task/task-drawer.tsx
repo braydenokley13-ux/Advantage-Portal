@@ -44,14 +44,14 @@ import {
 import { useRole } from "@/lib/role-context";
 import { canEditTask, canReview, canSubmit } from "@/lib/permissions";
 import { STATUS_LABELS } from "@/lib/kanban-rules";
-import { STATUS_DEFINITIONS } from "@/lib/status";
+import { STATUS_DEFINITIONS, isTaskOverdue } from "@/lib/status";
 import {
   STAGE_DEFINITIONS,
   deriveStoryStage,
   nextActionForRole,
 } from "@/lib/newsroom-stage";
 import { initials, cn } from "@/lib/utils";
-import { format, formatDistanceToNowStrict, isPast } from "date-fns";
+import { format, formatDistanceToNowStrict } from "date-fns";
 import type { Submission, Task } from "@/lib/types";
 
 const STATUS_TONE: Record<
@@ -198,7 +198,7 @@ export function TaskDrawer({
   const stageInfo = deriveStoryStage({ task, checklist: checklist ?? undefined, issue });
   const nextNewsroomAction = nextActionForRole(stageInfo.stage, user.role);
   const due = new Date(task.deadline);
-  const overdue = isPast(due) && task.status !== "complete";
+  const overdue = isTaskOverdue(task);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

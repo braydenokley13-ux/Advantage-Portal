@@ -42,7 +42,8 @@ import {
 import { useStore } from "@/lib/store";
 import { canCreateTask } from "@/lib/permissions";
 import { initials } from "@/lib/utils";
-import { isPast, isWithinInterval, addDays, format } from "date-fns";
+import { isWithinInterval, addDays, format } from "date-fns";
+import { isTaskOverdue } from "@/lib/status";
 import type { Pitch, Task } from "@/lib/types";
 import { deriveStoryStage } from "@/lib/newsroom-stage";
 
@@ -78,9 +79,7 @@ export default function DashboardPage() {
             end: inSevenDays,
           })
       ).length,
-      overdue: myTasks.filter(
-        (t) => t.status !== "complete" && isPast(new Date(t.deadline))
-      ).length,
+      overdue: myTasks.filter((t) => isTaskOverdue(t)).length,
     };
   }, [myTasks]);
 
@@ -523,9 +522,7 @@ function LeaderStats({
   tasks: Task[];
   messages: { pinnedAt?: string }[];
 }) {
-  const overdue = tasks.filter(
-    (t) => t.status !== "complete" && isPast(new Date(t.deadline))
-  ).length;
+  const overdue = tasks.filter((t) => isTaskOverdue(t)).length;
   const inFlight = tasks.filter(
     (t) => t.status === "in_progress" || t.status === "submitted"
   ).length;
@@ -702,9 +699,7 @@ function AdminStats({
     (n) =>
       n.kind === "submission" && new Date(n.createdAt) > sevenDaysAgo
   ).length;
-  const overdue = tasks.filter(
-    (t) => t.status !== "complete" && isPast(new Date(t.deadline))
-  ).length;
+  const overdue = tasks.filter((t) => isTaskOverdue(t)).length;
   const teamCount = users.length;
   // Mock metric: average review cycle in hours, derived from submissions to
   // last-decision spread. Without a backend, just showcase a number.

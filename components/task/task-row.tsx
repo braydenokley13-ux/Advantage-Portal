@@ -6,10 +6,10 @@ import { initials, cn } from "@/lib/utils";
 import { useStore } from "@/lib/store";
 import { useRole } from "@/lib/role-context";
 import { STATUS_LABELS } from "@/lib/kanban-rules";
-import { STATUS_DEFINITIONS } from "@/lib/status";
+import { STATUS_DEFINITIONS, isTaskOverdue } from "@/lib/status";
 import type { Task } from "@/lib/types";
 import { BookOpen, Calendar, Clock } from "lucide-react";
-import { format, isPast, formatDistanceToNowStrict } from "date-fns";
+import { format, formatDistanceToNowStrict } from "date-fns";
 
 const STATUS_TONE: Record<
   Task["status"],
@@ -41,7 +41,7 @@ export function TaskRow({
     ? users.find((u) => u.id === task.editorId)
     : undefined;
   const due = new Date(task.deadline);
-  const overdue = isPast(due) && task.status !== "complete";
+  const overdue = isTaskOverdue(task);
   // Don't echo the writer's own name back at them — they already know.
   const showWriterName = writer && writer.id !== viewer.id;
 

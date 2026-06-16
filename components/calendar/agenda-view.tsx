@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useStore } from "@/lib/store";
 import { STATUS_LABELS } from "@/lib/kanban-rules";
+import { isTaskOverdue } from "@/lib/status";
 import { cn, initials } from "@/lib/utils";
 import type { Task } from "@/lib/types";
 
@@ -63,9 +64,7 @@ export function AgendaView({
     <div className="space-y-5">
       {[...groups.entries()].map(([dateKey, dayTasks]) => {
         const date = new Date(dateKey);
-        const isOverdueGroup = dayTasks.every(
-          (t) => isPast(date) && t.status !== "complete"
-        );
+        const isOverdueGroup = dayTasks.every((t) => isTaskOverdue(t));
         return (
           <section key={dateKey}>
             <div className="flex items-center gap-2 mb-2">
@@ -89,8 +88,7 @@ export function AgendaView({
                 const editor = t.editorId
                   ? users.find((u) => u.id === t.editorId)
                   : undefined;
-                const overdue =
-                  isPast(new Date(t.deadline)) && t.status !== "complete";
+                const overdue = isTaskOverdue(t);
                 return (
                   <li key={t.id}>
                     <button

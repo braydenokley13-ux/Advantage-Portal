@@ -17,8 +17,9 @@ import { TaskDrawer } from "@/components/task/task-drawer";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { useRole } from "@/lib/role-context";
 import { useVisibleTasks } from "@/lib/hooks";
+import { isTaskOverdue } from "@/lib/status";
 import type { Task } from "@/lib/types";
-import { addDays, isPast, isWithinInterval } from "date-fns";
+import { addDays, isWithinInterval } from "date-fns";
 
 const EMPTY_TASKS: Task[] = [];
 
@@ -41,9 +42,7 @@ export default function MyTasksPage() {
       ),
       awaitingFeedback: tasks.filter((t) => t.status === "submitted"),
       completed: tasks.filter((t) => t.status === "complete"),
-      overdue: tasks.filter(
-        (t) => t.status !== "complete" && isPast(new Date(t.deadline))
-      ),
+      overdue: tasks.filter((t) => isTaskOverdue(t, now)),
       dueSoon: tasks.filter(
         (t) =>
           t.status !== "complete" &&

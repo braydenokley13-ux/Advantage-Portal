@@ -14,8 +14,9 @@ import {
   RefreshCw,
   Send,
 } from "lucide-react";
-import { format, formatDistanceToNowStrict, isPast } from "date-fns";
+import { format, formatDistanceToNowStrict } from "date-fns";
 import { motion } from "framer-motion";
+import { isTaskOverdue } from "@/lib/status";
 
 const COLOR_BORDER: Record<Task["color"], string> = {
   green: "border-l-emerald-500",
@@ -54,7 +55,7 @@ export function TaskCard({
     ? users.find((u) => u.id === task.editorId)
     : undefined;
   const due = new Date(task.deadline);
-  const overdue = isPast(due) && task.status !== "complete";
+  const overdue = isTaskOverdue(task);
   const pendingExtension = task.extensionRequest?.status === "pending";
   const currentVersion =
     submissions.find((s) => s.id === task.currentSubmissionId)?.version ??
