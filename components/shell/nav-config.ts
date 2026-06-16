@@ -12,6 +12,7 @@ import {
   ShieldAlert,
   Lightbulb,
   Newspaper,
+  Library,
   type LucideIcon,
 } from "lucide-react";
 import type { Role } from "@/lib/types";
@@ -53,6 +54,12 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Issues",
     icon: Newspaper,
     roles: ["editor", "leader", "admin"],
+  },
+  {
+    href: "/archive",
+    label: "Archive",
+    icon: Library,
+    roles: ["writer", "editor", "leader", "admin"],
   },
   {
     href: "/reviews",
