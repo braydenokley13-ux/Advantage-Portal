@@ -106,3 +106,8 @@ export function canPinMessage(role: Role) {
 export function canModerate(role: Role) {
   return role === "leader" || role === "admin";
 }
+
+/** Edit portal-wide configuration (branding, feature toggles, workflows). */
+export function canManageSettings(role: Role) {
+  return role === "admin";
+}

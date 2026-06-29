@@ -550,6 +550,63 @@ export const SensitiveFlagDecideInput = z.object({
 });
 export type SensitiveFlagDecideInputZ = z.infer<typeof SensitiveFlagDecideInput>;
 
+// ────────────────────────────────────────────────────────────────────────────
+// Site configuration (branding, feature toggles, workflow overrides)
+//
+// Stored as a single JSON patch in `public.app_settings`; every field is
+// optional because only changed values are persisted. The app deep-merges this
+// over DEFAULT_SITE_CONFIG (lib/site-config-defaults.ts) at read time.
+// ────────────────────────────────────────────────────────────────────────────
+
+export const FeatureToggleSchema = z
+  .object({ enabled: z.boolean(), roles: z.array(RoleSchema) })
+  .partial();
+
+export const StatusOverrideSchema = z
+  .object({
+    label: z.string(),
+    description: z.string(),
+    badgeTone: z.enum(["default", "secondary", "warning", "success"]),
+    nextAction: z
+      .object({ writer: z.string(), editor: z.string(), leader: z.string() })
+      .partial(),
+  })
+  .partial();
+
+export const ChecklistTemplateItemSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  group: ChecklistGroupSchema,
+  required: z.boolean(),
+});
+
+export const FeedbackCategoryConfigSchema = z.object({
+  value: z.string(),
+  label: z.string(),
+});
+
+export const SiteConfigPatchSchema = z
+  .object({
+    brand: z
+      .object({
+        name: z.string(),
+        tagline: z.string(),
+        accentFrom: z.string(),
+        accentTo: z.string(),
+      })
+      .partial(),
+    features: z.record(z.string(), FeatureToggleSchema),
+    statuses: z.record(z.string(), StatusOverrideSchema),
+    checklistTemplate: z.record(
+      z.string(),
+      z.array(ChecklistTemplateItemSchema)
+    ),
+    notificationDefaults: z.record(z.string(), z.boolean()),
+    feedbackCategories: z.array(FeedbackCategoryConfigSchema),
+  })
+  .partial();
+export type SiteConfigPatchZ = z.infer<typeof SiteConfigPatchSchema>;
+
 export const Schemas = {
   User: UserSchema,
   Task: TaskSchema,

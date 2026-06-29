@@ -35,6 +35,7 @@ import type {
   SensitiveFlagDecideInputZ,
   SensitiveFlagRaiseInputZ,
   SensitiveFlagZ,
+  SiteConfigPatchZ,
   SubmissionCreateInputZ,
   SubmissionZ,
   TaskCreateInputZ,
@@ -173,6 +174,12 @@ export interface ApiClient {
   }): Promise<SensitiveFlagZ[]>;
   raiseSensitiveFlag(input: SensitiveFlagRaiseInputZ): Promise<SensitiveFlagZ>;
   decideSensitiveFlag(input: SensitiveFlagDecideInputZ): Promise<SensitiveFlagZ>;
+
+  // ── Site settings (branding, feature toggles, workflow overrides) ─────────
+  /** The stored configuration patch (only fields an admin has changed). */
+  getSiteSettings(): Promise<SiteConfigPatchZ>;
+  /** Deep-merge `patch` into the stored config and return the new stored patch. */
+  updateSiteSettings(patch: SiteConfigPatchZ): Promise<SiteConfigPatchZ>;
 }
 
 export class ApiError extends Error {

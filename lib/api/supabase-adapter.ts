@@ -24,12 +24,15 @@ import type {
   ReviewZ,
   SectionZ,
   SensitiveFlagZ,
+  SiteConfigPatchZ,
   SubmissionZ,
   TaskZ,
   UserZ,
 } from "@/lib/contracts";
 import type { ChecklistItem, ExtensionRequest } from "@/lib/types";
 import { defaultChecklistItems } from "@/lib/checklist-template";
+import { SiteConfigPatchSchema } from "@/lib/contracts";
+import { mergeConfigPatch } from "@/lib/site-config-defaults";
 
 // ── row → contract translators ───────────────────────────────────────────
 type UserRow = {
@@ -1865,5 +1868,36 @@ export class SupabaseApiClient implements ApiClient {
       .single();
     if (error) this.err("decideSensitiveFlag(update)", error);
     return rowToSensitive(data as SensitiveFlagRow);
+  }
+
+  // ── Site settings ───────────────────────────────────────────────────────
+  async getSiteSettings(): Promise<SiteConfigPatchZ> {
+    const { data, error } = await this.sb
+      .from("app_settings")
+      .select("config")
+      .eq("id", 1)
+      .maybeSingle();
+    if (error) this.err("getSiteSettings", error);
+    const parsed = SiteConfigPatchSchema.safeParse(
+      (data as { config?: unknown } | null)?.config ?? {}
+    );
+    return parsed.success ? parsed.data : {};
+  }
+
+  async updateSiteSettings(patch: SiteConfigPatchZ): Promise<SiteConfigPatchZ> {
+    // Read-modify-write so saving one settings tab doesn't clobber the others.
+    const current = await this.getSiteSettings();
+    const merged = mergeConfigPatch(current, patch);
+    const { data, error } = await this.sb
+      .from("app_settings")
+      .update({ config: merged })
+      .eq("id", 1)
+      .select("config")
+      .single();
+    if (error) this.err("updateSiteSettings", error);
+    const parsed = SiteConfigPatchSchema.safeParse(
+      (data as { config?: unknown }).config ?? {}
+    );
+    return parsed.success ? parsed.data : {};
   }
 }
