@@ -15,6 +15,7 @@ import type {
   CommentZ,
   ConversationZ,
   EditorialChecklistZ,
+  FeedbackZ,
   IssueSlotZ,
   IssueZ,
   MessageZ,
@@ -463,6 +464,49 @@ const COMMENT_COLUMNS =
   "id, submission_id, author_id, body, inline, line_number, resolved, created_at";
 
 // ── adapter ───────────────────────────────────────────────────────────────
+type FeedbackRow = {
+  id: string;
+  author_id: string;
+  category: FeedbackZ["category"];
+  subject: string;
+  message: string;
+  rating: number | null;
+  target_kind: string | null;
+  target_id: string | null;
+  target_label: string | null;
+  status: FeedbackZ["status"];
+  assigned_to_id: string | null;
+  admin_note: string | null;
+  resolved_by_id: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const FEEDBACK_COLUMNS =
+  "id, author_id, category, subject, message, rating, target_kind, target_id, target_label, status, assigned_to_id, admin_note, resolved_by_id, resolved_at, created_at, updated_at";
+
+function rowToFeedback(r: FeedbackRow): FeedbackZ {
+  return {
+    id: r.id,
+    authorId: r.author_id,
+    category: r.category,
+    subject: r.subject,
+    message: r.message,
+    rating: r.rating ?? undefined,
+    targetKind: r.target_kind ?? undefined,
+    targetId: r.target_id ?? undefined,
+    targetLabel: r.target_label ?? undefined,
+    status: r.status,
+    assignedToId: r.assigned_to_id ?? undefined,
+    adminNote: r.admin_note ?? undefined,
+    resolvedById: r.resolved_by_id ?? undefined,
+    resolvedAt: r.resolved_at ?? undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
 export class SupabaseApiClient implements ApiClient {
   constructor(
     private readonly sb: SupabaseClient,
@@ -1868,6 +1912,83 @@ export class SupabaseApiClient implements ApiClient {
       .single();
     if (error) this.err("decideSensitiveFlag(update)", error);
     return rowToSensitive(data as SensitiveFlagRow);
+  }
+
+  // ── Feedback ────────────────────────────────────────────────────────────
+  async listFeedback(filter?: {
+    status?: FeedbackZ["status"];
+    authorId?: string;
+  }): Promise<FeedbackZ[]> {
+    let q = this.sb.from("feedback").select(FEEDBACK_COLUMNS);
+    if (filter?.status) q = q.eq("status", filter.status);
+    if (filter?.authorId) q = q.eq("author_id", filter.authorId);
+    const { data, error } = await q.order("created_at", { ascending: false });
+    if (error) this.err("listFeedback", error);
+    return (data ?? []).map((r) => rowToFeedback(r as FeedbackRow));
+  }
+
+  async createFeedback(input: {
+    authorId: string;
+    category?: FeedbackZ["category"];
+    subject: string;
+    message: string;
+    rating?: number;
+    targetKind?: string;
+    targetId?: string;
+    targetLabel?: string;
+  }): Promise<FeedbackZ> {
+    this.assertSelf("createFeedback", input.authorId);
+    const { data, error } = await this.sb
+      .from("feedback")
+      .insert({
+        author_id: input.authorId,
+        category: input.category ?? "general",
+        subject: input.subject,
+        message: input.message,
+        rating: input.rating ?? null,
+        target_kind: input.targetKind ?? null,
+        target_id: input.targetId ?? null,
+        target_label: input.targetLabel ?? null,
+      })
+      .select(FEEDBACK_COLUMNS)
+      .single();
+    if (error) this.err("createFeedback", error);
+    return rowToFeedback(data as FeedbackRow);
+  }
+
+  async updateFeedback(
+    id: string,
+    patch: {
+      status?: FeedbackZ["status"];
+      assignedToId?: string;
+      adminNote?: string;
+      resolvedById?: string;
+    }
+  ): Promise<FeedbackZ> {
+    const update: Record<string, unknown> = {};
+    if (patch.status !== undefined) update.status = patch.status;
+    if (patch.assignedToId !== undefined)
+      update.assigned_to_id = patch.assignedToId ?? null;
+    if (patch.adminNote !== undefined)
+      update.admin_note = patch.adminNote ?? null;
+    if (patch.resolvedById !== undefined)
+      update.resolved_by_id = patch.resolvedById ?? null;
+    // Stamp the resolution time when moving into a terminal state.
+    if (
+      patch.status === "resolved" ||
+      patch.status === "declined" ||
+      patch.status === "archived"
+    ) {
+      update.resolved_at = new Date().toISOString();
+    }
+    const { data, error } = await this.sb
+      .from("feedback")
+      .update(update)
+      .eq("id", id)
+      .select(FEEDBACK_COLUMNS)
+      .single();
+    if (error) this.err("updateFeedback", error);
+    return rowToFeedback(data as FeedbackRow);
   }
 
   // ── Site settings ───────────────────────────────────────────────────────

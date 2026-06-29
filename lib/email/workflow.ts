@@ -174,6 +174,19 @@ export function emailOnModerationResolved(
   });
 }
 
+/** New feedback arrived → alert admins and leaders so it gets triaged. */
+export function emailOnFeedbackSubmitted(
+  users: User[],
+  subject: string
+): void {
+  fanOutNotificationEmail(staffIds(users, ["admin", "leader"]), {
+    kind: "feedback",
+    title: "New feedback received",
+    body: subject.slice(0, 120),
+    actionPath: "/admin/feedback",
+  });
+}
+
 /** A writer asked for more time → alert leaders and admins to triage it. */
 export function emailOnExtensionRequest(users: User[], reason: string): void {
   fanOutNotificationEmail(staffIds(users, ["leader", "admin"]), {

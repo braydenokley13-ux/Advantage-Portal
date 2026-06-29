@@ -14,6 +14,7 @@ import {
   Newspaper,
   Library,
   Settings2,
+  MessageSquarePlus,
   type LucideIcon,
 } from "lucide-react";
 import type { Role } from "@/lib/types";
@@ -112,6 +113,13 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Settings",
     icon: Settings2,
     roles: ["admin"],
+  },
+  {
+    href: "/admin/feedback",
+    label: "Feedback",
+    icon: MessageSquarePlus,
+    roles: ["leader", "admin"],
+    feature: "feedback",
   },
   {
     href: "/admin/moderation",

@@ -12,6 +12,10 @@ import type {
   ConversationCreateInputZ,
   ConversationZ,
   EditorialChecklistZ,
+  FeedbackCreateInputZ,
+  FeedbackStatusZ,
+  FeedbackUpdateInputZ,
+  FeedbackZ,
   IssueSlotUpsertInputZ,
   IssueSlotZ,
   IssueUpdateInputZ,
@@ -123,6 +127,14 @@ export interface ApiClient {
     patch: ModerationReportUpdateInputZ
   ): Promise<ModerationReportZ[]>;
   hideMessage(messageId: string): Promise<MessageZ>;
+
+  // ── Feedback ──────────────────────────────────────────────────────────────
+  listFeedback(filter?: {
+    status?: FeedbackStatusZ;
+    authorId?: string;
+  }): Promise<FeedbackZ[]>;
+  createFeedback(input: FeedbackCreateInputZ): Promise<FeedbackZ>;
+  updateFeedback(id: string, patch: FeedbackUpdateInputZ): Promise<FeedbackZ>;
 
   // ── Newsroom: sections ────────────────────────────────────────────────────
   listSections(): Promise<SectionZ[]>;

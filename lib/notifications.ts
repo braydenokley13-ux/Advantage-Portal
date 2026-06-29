@@ -7,6 +7,8 @@ import {
   FileUp,
   Megaphone,
   MessageSquare,
+  MessageSquarePlus,
+  Trophy,
 } from "lucide-react";
 import type { NotificationKind } from "./types";
 
@@ -68,6 +70,18 @@ export const NOTIFICATION_META: Record<
     icon: Megaphone,
     tone: "bg-rose-100 text-rose-700",
   },
+  feedback: {
+    label: "Feedback",
+    description: "Someone sent feedback about the Advantage.",
+    icon: MessageSquarePlus,
+    tone: "bg-cyan-100 text-cyan-700",
+  },
+  competition: {
+    label: "Essay competition",
+    description: "Updates on competition entries, judging, and winners.",
+    icon: Trophy,
+    tone: "bg-amber-100 text-amber-800",
+  },
 };
 
 export const NOTIFICATION_ORDER: NotificationKind[] = [
@@ -79,4 +93,6 @@ export const NOTIFICATION_ORDER: NotificationKind[] = [
   "task_complete",
   "message",
   "announcement",
+  "feedback",
+  "competition",
 ];

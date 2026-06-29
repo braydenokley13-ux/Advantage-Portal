@@ -20,6 +20,8 @@ export const EMAIL_DEFAULTS: Record<NotificationKind, boolean> = {
   task_complete: true,
   message: false,
   announcement: true,
+  feedback: true,
+  competition: true,
 };
 
 /** Optional per-user override map (e.g. from the preferences screen). */
@@ -58,6 +60,10 @@ export function defaultNotificationPath(kind: NotificationKind): string {
       return "/messages";
     case "announcement":
       return "/announcements";
+    case "feedback":
+      return "/admin/feedback";
+    case "competition":
+      return "/competitions";
     default:
       return "/notifications";
   }

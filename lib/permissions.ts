@@ -111,3 +111,14 @@ export function canModerate(role: Role) {
 export function canManageSettings(role: Role) {
   return role === "admin";
 }
+
+/** Anyone signed in can send feedback about anything in the Advantage. */
+export function canSubmitFeedback(role: Role) {
+  void role;
+  return true;
+}
+
+/** Triage the feedback queue — leaders and admins. */
+export function canTriageFeedback(role: Role) {
+  return role === "leader" || role === "admin";
+}

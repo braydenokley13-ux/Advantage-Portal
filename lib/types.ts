@@ -300,7 +300,9 @@ export type NotificationKind =
   | "review_decision"
   | "task_complete"
   | "message"
-  | "announcement";
+  | "announcement"
+  | "feedback"
+  | "competition";
 
 export interface Notification {
   id: string;
@@ -340,6 +342,44 @@ export interface ModerationReport {
   resolvedById?: string;
   resolvedAt?: string;
   internalNote?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type FeedbackCategory =
+  | "portal_bug"
+  | "feature_idea"
+  | "story_or_content"
+  | "competition"
+  | "general"
+  | "other";
+
+export type FeedbackStatus =
+  | "open"
+  | "triaged"
+  | "planned"
+  | "resolved"
+  | "declined"
+  | "archived";
+
+/** Free-form feedback on anything in the Advantage; triaged by leaders/admins. */
+export interface Feedback {
+  id: string;
+  authorId: string;
+  category: FeedbackCategory;
+  subject: string;
+  message: string;
+  /** Optional 1–5 sentiment. */
+  rating?: number;
+  /** Optional pointer to what the feedback is about (a story, a page, …). */
+  targetKind?: string;
+  targetId?: string;
+  targetLabel?: string;
+  status: FeedbackStatus;
+  assignedToId?: string;
+  adminNote?: string;
+  resolvedById?: string;
+  resolvedAt?: string;
   createdAt: string;
   updatedAt: string;
 }

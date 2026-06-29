@@ -17,6 +17,8 @@ import type {
   CommentZ,
   ConversationZ,
   EditorialChecklistZ,
+  FeedbackStatusZ,
+  FeedbackZ,
   IssueSlotZ,
   IssueZ,
   MessageZ,
@@ -127,6 +129,18 @@ export function useModerationReports(filter?: {
   return useApiResource(
     () => api.listModerationReports(filter),
     [api, filter?.status]
+  );
+}
+
+// ── Feedback ────────────────────────────────────────────────────────────────
+export function useFeedback(filter?: {
+  status?: FeedbackStatusZ;
+  authorId?: string;
+}): ApiResource<FeedbackZ[]> {
+  const api = useApiClient();
+  return useApiResource(
+    () => api.listFeedback(filter),
+    [api, filter?.status, filter?.authorId]
   );
 }
 

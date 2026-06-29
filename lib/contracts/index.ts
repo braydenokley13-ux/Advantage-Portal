@@ -58,6 +58,8 @@ export const NotificationKindSchema = z.enum([
   "task_complete",
   "message",
   "announcement",
+  "feedback",
+  "competition",
 ]);
 export type NotificationKindZ = z.infer<typeof NotificationKindSchema>;
 
@@ -396,6 +398,70 @@ export const ModerationReportUpdateInput = z.object({
 export type ModerationReportUpdateInputZ = z.infer<
   typeof ModerationReportUpdateInput
 >;
+
+// ────────────────────────────────────────────────────────────────────────────
+// Feedback (submit on anything → triage queue)
+// ────────────────────────────────────────────────────────────────────────────
+
+export const FeedbackCategorySchema = z.enum([
+  "portal_bug",
+  "feature_idea",
+  "story_or_content",
+  "competition",
+  "general",
+  "other",
+]);
+export type FeedbackCategoryZ = z.infer<typeof FeedbackCategorySchema>;
+
+export const FeedbackStatusSchema = z.enum([
+  "open",
+  "triaged",
+  "planned",
+  "resolved",
+  "declined",
+  "archived",
+]);
+export type FeedbackStatusZ = z.infer<typeof FeedbackStatusSchema>;
+
+export const FeedbackSchema = z.object({
+  id: z.string(),
+  authorId: z.string(),
+  category: FeedbackCategorySchema,
+  subject: z.string(),
+  message: z.string(),
+  rating: z.number().int().min(1).max(5).optional(),
+  targetKind: z.string().optional(),
+  targetId: z.string().optional(),
+  targetLabel: z.string().optional(),
+  status: FeedbackStatusSchema,
+  assignedToId: z.string().optional(),
+  adminNote: z.string().optional(),
+  resolvedById: z.string().optional(),
+  resolvedAt: isoDate.optional(),
+  createdAt: isoDate,
+  updatedAt: isoDate,
+});
+export type FeedbackZ = z.infer<typeof FeedbackSchema>;
+
+export const FeedbackCreateInput = z.object({
+  authorId: z.string(),
+  category: FeedbackCategorySchema.default("general"),
+  subject: z.string().min(1),
+  message: z.string().min(1),
+  rating: z.number().int().min(1).max(5).optional(),
+  targetKind: z.string().optional(),
+  targetId: z.string().optional(),
+  targetLabel: z.string().optional(),
+});
+export type FeedbackCreateInputZ = z.infer<typeof FeedbackCreateInput>;
+
+export const FeedbackUpdateInput = z.object({
+  status: FeedbackStatusSchema.optional(),
+  assignedToId: z.string().optional(),
+  adminNote: z.string().optional(),
+  resolvedById: z.string().optional(),
+});
+export type FeedbackUpdateInputZ = z.infer<typeof FeedbackUpdateInput>;
 
 // ────────────────────────────────────────────────────────────────────────────
 // Newsroom workflow — sections, pitches, issues, slots, checklists, flags
