@@ -16,6 +16,7 @@ import {
   Settings2,
   MessageSquarePlus,
   Trophy,
+  Medal,
   type LucideIcon,
 } from "lucide-react";
 import type { Role } from "@/lib/types";
@@ -73,6 +74,14 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Trophy,
     roles: ["writer", "editor", "leader", "admin"],
     feature: "competitions",
+  },
+  {
+    // Public, season-based leaderboard. Lives outside the app shell, so this
+    // is a convenience link into the open page.
+    href: "/league",
+    label: "Writers League",
+    icon: Medal,
+    roles: ["writer", "editor", "leader", "admin"],
   },
   {
     href: "/reviews",
@@ -139,6 +148,12 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/admin/escalations",
     label: "Escalations",
     icon: ShieldAlert,
+    roles: ["leader", "admin"],
+  },
+  {
+    href: "/admin/league",
+    label: "League Board",
+    icon: Trophy,
     roles: ["leader", "admin"],
   },
 ];

@@ -23,6 +23,12 @@ type SendEmailInput = {
   html: string;
   text?: string;
   replyTo?: string;
+  /**
+   * Optional carbon-copy recipient(s). Invalid addresses are dropped silently
+   * so a single bad CC never aborts a send. Used by the Writers League to keep
+   * the shared journal inbox copied on every writer email.
+   */
+  cc?: string | string[];
 };
 
 let transporter: Transporter | null = null;
@@ -122,6 +128,16 @@ export async function sendEmail(input: SendEmailInput) {
     : undefined;
   if (input.replyTo && !replyTo) throw new Error("Reply-to email is invalid.");
 
+  // Normalise CC: accept a string or array, drop invalid/duplicate addresses
+  // and never CC the primary recipient again.
+  const ccList = Array.from(
+    new Set(
+      (Array.isArray(input.cc) ? input.cc : input.cc ? [input.cc] : [])
+        .map((value) => normalizeEmailAddress(value))
+        .filter((value): value is string => !!value && value !== to)
+    )
+  );
+
   const config = readSmtpConfig();
   const from = `"${quoteDisplayName(config.fromName)}" <${config.fromAddress}>`;
   const smtp = getTransporter(config);
@@ -129,6 +145,7 @@ export async function sendEmail(input: SendEmailInput) {
   return smtp.sendMail({
     from,
     to,
+    cc: ccList.length > 0 ? ccList : undefined,
     replyTo,
     subject: input.subject,
     html: input.html,
