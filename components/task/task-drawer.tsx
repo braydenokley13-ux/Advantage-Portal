@@ -48,8 +48,7 @@ import {
   canReview,
   canSubmit,
 } from "@/lib/permissions";
-import { STATUS_LABELS } from "@/lib/kanban-rules";
-import { STATUS_DEFINITIONS } from "@/lib/status";
+import { useStatusDefinitions } from "@/lib/use-status";
 import {
   STAGE_DEFINITIONS,
   deriveStoryStage,
@@ -130,6 +129,7 @@ export function TaskDrawer({
     afterTaskWrite();
   };
   const { user } = useRole();
+  const statusDefs = useStatusDefinitions();
   const [extOpen, setExtOpen] = useState(false);
   const [extDate, setExtDate] = useState("");
   const [extReason, setExtReason] = useState("");
@@ -212,7 +212,7 @@ export function TaskDrawer({
           <div className="flex items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={STATUS_TONE[task.status]}>
-                {STATUS_LABELS[task.status]}
+                {statusDefs[task.status].label}
               </Badge>
               <Badge variant={STAGE_DEFINITIONS[stageInfo.stage].tone}>
                 {STAGE_DEFINITIONS[stageInfo.stage].label}
@@ -336,7 +336,7 @@ export function TaskDrawer({
                 )}
                 <p className="text-[11px] text-muted-foreground border-t border-border/60 pt-2 mt-1">
                   <span className="font-medium">Status:</span>{" "}
-                  {STATUS_DEFINITIONS[task.status].description}
+                  {statusDefs[task.status].description}
                 </p>
               </div>
 

@@ -58,6 +58,8 @@ export const NotificationKindSchema = z.enum([
   "task_complete",
   "message",
   "announcement",
+  "feedback",
+  "competition",
 ]);
 export type NotificationKindZ = z.infer<typeof NotificationKindSchema>;
 
@@ -398,6 +400,212 @@ export type ModerationReportUpdateInputZ = z.infer<
 >;
 
 // ────────────────────────────────────────────────────────────────────────────
+// Feedback (submit on anything → triage queue)
+// ────────────────────────────────────────────────────────────────────────────
+
+export const FeedbackCategorySchema = z.enum([
+  "portal_bug",
+  "feature_idea",
+  "story_or_content",
+  "competition",
+  "general",
+  "other",
+]);
+export type FeedbackCategoryZ = z.infer<typeof FeedbackCategorySchema>;
+
+export const FeedbackStatusSchema = z.enum([
+  "open",
+  "triaged",
+  "planned",
+  "resolved",
+  "declined",
+  "archived",
+]);
+export type FeedbackStatusZ = z.infer<typeof FeedbackStatusSchema>;
+
+export const FeedbackSchema = z.object({
+  id: z.string(),
+  authorId: z.string(),
+  category: FeedbackCategorySchema,
+  subject: z.string(),
+  message: z.string(),
+  rating: z.number().int().min(1).max(5).optional(),
+  targetKind: z.string().optional(),
+  targetId: z.string().optional(),
+  targetLabel: z.string().optional(),
+  status: FeedbackStatusSchema,
+  assignedToId: z.string().optional(),
+  adminNote: z.string().optional(),
+  resolvedById: z.string().optional(),
+  resolvedAt: isoDate.optional(),
+  createdAt: isoDate,
+  updatedAt: isoDate,
+});
+export type FeedbackZ = z.infer<typeof FeedbackSchema>;
+
+export const FeedbackCreateInput = z.object({
+  authorId: z.string(),
+  category: FeedbackCategorySchema.default("general"),
+  subject: z.string().min(1),
+  message: z.string().min(1),
+  rating: z.number().int().min(1).max(5).optional(),
+  targetKind: z.string().optional(),
+  targetId: z.string().optional(),
+  targetLabel: z.string().optional(),
+});
+export type FeedbackCreateInputZ = z.infer<typeof FeedbackCreateInput>;
+
+export const FeedbackUpdateInput = z.object({
+  status: FeedbackStatusSchema.optional(),
+  assignedToId: z.string().optional(),
+  adminNote: z.string().optional(),
+  resolvedById: z.string().optional(),
+});
+export type FeedbackUpdateInputZ = z.infer<typeof FeedbackUpdateInput>;
+
+// ────────────────────────────────────────────────────────────────────────────
+// Essay competitions (internal, scored judging)
+// ────────────────────────────────────────────────────────────────────────────
+
+export const CompetitionStatusSchema = z.enum([
+  "draft",
+  "open",
+  "judging",
+  "announced",
+  "archived",
+]);
+export type CompetitionStatusZ = z.infer<typeof CompetitionStatusSchema>;
+
+export const EntryStatusSchema = z.enum([
+  "submitted",
+  "shortlisted",
+  "winner",
+  "not_selected",
+  "withdrawn",
+]);
+export type EntryStatusZ = z.infer<typeof EntryStatusSchema>;
+
+export const CompetitionSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  prompt: z.string(),
+  description: z.string(),
+  rules: z.string(),
+  wordLimit: z.number().int().positive().optional(),
+  opensAt: isoDate,
+  closesAt: isoDate,
+  status: CompetitionStatusSchema,
+  anonymizedJudging: z.boolean(),
+  winnerEntryId: z.string().optional(),
+  createdById: z.string().optional(),
+  createdAt: isoDate,
+  updatedAt: isoDate,
+});
+export type CompetitionZ = z.infer<typeof CompetitionSchema>;
+
+export const CompetitionCreateInput = z.object({
+  title: z.string().min(1),
+  prompt: z.string().default(""),
+  description: z.string().default(""),
+  rules: z.string().default(""),
+  wordLimit: z.number().int().positive().optional(),
+  opensAt: isoDate.optional(),
+  closesAt: isoDate,
+  anonymizedJudging: z.boolean().optional(),
+  createdById: z.string(),
+});
+export type CompetitionCreateInputZ = z.infer<typeof CompetitionCreateInput>;
+
+export const CompetitionUpdateInput = z
+  .object({
+    title: z.string().min(1),
+    prompt: z.string(),
+    description: z.string(),
+    rules: z.string(),
+    wordLimit: z.number().int().positive().nullable(),
+    opensAt: isoDate,
+    closesAt: isoDate,
+    anonymizedJudging: z.boolean(),
+    status: CompetitionStatusSchema,
+  })
+  .partial();
+export type CompetitionUpdateInputZ = z.infer<typeof CompetitionUpdateInput>;
+
+export const CompetitionEntrySchema = z.object({
+  id: z.string(),
+  competitionId: z.string(),
+  authorId: z.string(),
+  title: z.string(),
+  type: SubmissionTypeSchema,
+  content: z.string(),
+  file: SubmissionFileMetaSchema.optional(),
+  wordCount: z.number().int().nonnegative().optional(),
+  status: EntryStatusSchema,
+  createdAt: isoDate,
+  updatedAt: isoDate,
+});
+export type CompetitionEntryZ = z.infer<typeof CompetitionEntrySchema>;
+
+export const CompetitionEntryCreateInput = z.object({
+  competitionId: z.string(),
+  authorId: z.string(),
+  title: z.string().min(1),
+  type: SubmissionTypeSchema,
+  content: z.string().min(1),
+  file: SubmissionFileMetaSchema.optional(),
+  wordCount: z.number().int().nonnegative().optional(),
+});
+export type CompetitionEntryCreateInputZ = z.infer<
+  typeof CompetitionEntryCreateInput
+>;
+
+export const CompetitionEntryUpdateInput = z
+  .object({
+    title: z.string().min(1),
+    content: z.string().min(1),
+    type: SubmissionTypeSchema,
+    file: SubmissionFileMetaSchema.optional(),
+    wordCount: z.number().int().nonnegative(),
+    status: EntryStatusSchema,
+  })
+  .partial();
+export type CompetitionEntryUpdateInputZ = z.infer<
+  typeof CompetitionEntryUpdateInput
+>;
+
+export const CompetitionScoreSchema = z.object({
+  id: z.string(),
+  entryId: z.string(),
+  judgeId: z.string(),
+  score: z.number().int().nonnegative(),
+  rubric: z.record(z.string(), z.number()).optional(),
+  notes: z.string().optional(),
+  createdAt: isoDate,
+  updatedAt: isoDate,
+});
+export type CompetitionScoreZ = z.infer<typeof CompetitionScoreSchema>;
+
+export const CompetitionScoreUpsertInput = z.object({
+  entryId: z.string(),
+  judgeId: z.string(),
+  score: z.number().int().nonnegative(),
+  rubric: z.record(z.string(), z.number()).optional(),
+  notes: z.string().optional(),
+});
+export type CompetitionScoreUpsertInputZ = z.infer<
+  typeof CompetitionScoreUpsertInput
+>;
+
+export const CompetitionAnnounceInput = z.object({
+  competitionId: z.string(),
+  winnerEntryId: z.string(),
+  decidedById: z.string(),
+});
+export type CompetitionAnnounceInputZ = z.infer<
+  typeof CompetitionAnnounceInput
+>;
+
+// ────────────────────────────────────────────────────────────────────────────
 // Newsroom workflow — sections, pitches, issues, slots, checklists, flags
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -549,6 +757,63 @@ export const SensitiveFlagDecideInput = z.object({
   note: z.string().optional(),
 });
 export type SensitiveFlagDecideInputZ = z.infer<typeof SensitiveFlagDecideInput>;
+
+// ────────────────────────────────────────────────────────────────────────────
+// Site configuration (branding, feature toggles, workflow overrides)
+//
+// Stored as a single JSON patch in `public.app_settings`; every field is
+// optional because only changed values are persisted. The app deep-merges this
+// over DEFAULT_SITE_CONFIG (lib/site-config-defaults.ts) at read time.
+// ────────────────────────────────────────────────────────────────────────────
+
+export const FeatureToggleSchema = z
+  .object({ enabled: z.boolean(), roles: z.array(RoleSchema) })
+  .partial();
+
+export const StatusOverrideSchema = z
+  .object({
+    label: z.string(),
+    description: z.string(),
+    badgeTone: z.enum(["default", "secondary", "warning", "success"]),
+    nextAction: z
+      .object({ writer: z.string(), editor: z.string(), leader: z.string() })
+      .partial(),
+  })
+  .partial();
+
+export const ChecklistTemplateItemSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  group: ChecklistGroupSchema,
+  required: z.boolean(),
+});
+
+export const FeedbackCategoryConfigSchema = z.object({
+  value: z.string(),
+  label: z.string(),
+});
+
+export const SiteConfigPatchSchema = z
+  .object({
+    brand: z
+      .object({
+        name: z.string(),
+        tagline: z.string(),
+        accentFrom: z.string(),
+        accentTo: z.string(),
+      })
+      .partial(),
+    features: z.record(z.string(), FeatureToggleSchema),
+    statuses: z.record(z.string(), StatusOverrideSchema),
+    checklistTemplate: z.record(
+      z.string(),
+      z.array(ChecklistTemplateItemSchema)
+    ),
+    notificationDefaults: z.record(z.string(), z.boolean()),
+    feedbackCategories: z.array(FeedbackCategoryConfigSchema),
+  })
+  .partial();
+export type SiteConfigPatchZ = z.infer<typeof SiteConfigPatchSchema>;
 
 export const Schemas = {
   User: UserSchema,

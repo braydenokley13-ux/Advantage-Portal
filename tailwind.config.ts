@@ -59,7 +59,10 @@ const config: Config = {
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],
       },
       backgroundImage: {
-        "brand-gradient": "linear-gradient(135deg, #5b5bd6 0%, #7e7af0 100%)",
+        // Colours are driven by CSS vars set at runtime from the site config
+        // (SiteConfigProvider); the fallbacks preserve the default palette.
+        "brand-gradient":
+          "linear-gradient(135deg, var(--brand-from, #5b5bd6) 0%, var(--brand-to, #7e7af0) 100%)",
       },
       boxShadow: {
         soft: "0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.06)",

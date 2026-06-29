@@ -300,7 +300,9 @@ export type NotificationKind =
   | "review_decision"
   | "task_complete"
   | "message"
-  | "announcement";
+  | "announcement"
+  | "feedback"
+  | "competition";
 
 export interface Notification {
   id: string;
@@ -340,6 +342,112 @@ export interface ModerationReport {
   resolvedById?: string;
   resolvedAt?: string;
   internalNote?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type FeedbackCategory =
+  | "portal_bug"
+  | "feature_idea"
+  | "story_or_content"
+  | "competition"
+  | "general"
+  | "other";
+
+export type FeedbackStatus =
+  | "open"
+  | "triaged"
+  | "planned"
+  | "resolved"
+  | "declined"
+  | "archived";
+
+/** Free-form feedback on anything in the Advantage; triaged by leaders/admins. */
+export interface Feedback {
+  id: string;
+  authorId: string;
+  category: FeedbackCategory;
+  subject: string;
+  message: string;
+  /** Optional 1–5 sentiment. */
+  rating?: number;
+  /** Optional pointer to what the feedback is about (a story, a page, …). */
+  targetKind?: string;
+  targetId?: string;
+  targetLabel?: string;
+  status: FeedbackStatus;
+  assignedToId?: string;
+  adminNote?: string;
+  resolvedById?: string;
+  resolvedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Essay competitions ──────────────────────────────────────────────────────
+
+export type CompetitionStatus =
+  | "draft"
+  | "open"
+  | "judging"
+  | "announced"
+  | "archived";
+
+export type EntryStatus =
+  | "submitted"
+  | "shortlisted"
+  | "winner"
+  | "not_selected"
+  | "withdrawn";
+
+/** An essay competition with scored judging. */
+export interface Competition {
+  id: string;
+  title: string;
+  /** The essay prompt / question entrants respond to. */
+  prompt: string;
+  description: string;
+  rules: string;
+  /** Optional max word count for entries. */
+  wordLimit?: number;
+  opensAt: string;
+  /** Entry deadline. */
+  closesAt: string;
+  status: CompetitionStatus;
+  /** When true, judges don't see author identity until the winner is announced. */
+  anonymizedJudging: boolean;
+  winnerEntryId?: string;
+  createdById?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A member's entry into a competition (reuses the submission shape). */
+export interface CompetitionEntry {
+  id: string;
+  competitionId: string;
+  authorId: string;
+  title: string;
+  type: SubmissionType;
+  /** inline → markdown; google_doc → URL; file → filename. */
+  content: string;
+  file?: SubmissionFileMeta;
+  wordCount?: number;
+  status: EntryStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A judge's rubric score for one entry. */
+export interface CompetitionScore {
+  id: string;
+  entryId: string;
+  judgeId: string;
+  /** Total score (sum of the rubric criteria). */
+  score: number;
+  /** Per-criterion scores, keyed by rubric key. */
+  rubric?: Record<string, number>;
+  notes?: string;
   createdAt: string;
   updatedAt: string;
 }

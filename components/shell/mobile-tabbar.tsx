@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRole } from "@/lib/role-context";
+import { useSiteConfig } from "@/lib/site-config";
 import { navForRole } from "./nav-config";
 import { cn } from "@/lib/utils";
 
 export function MobileTabbar() {
   const { role } = useRole();
+  const { config } = useSiteConfig();
   const pathname = usePathname();
-  const items = navForRole(role).slice(0, 5);
+  const items = navForRole(role, config).slice(0, 5);
 
   return (
     <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t border-border bg-background/95 backdrop-blur">

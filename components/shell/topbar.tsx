@@ -14,6 +14,9 @@ import { NotificationsPopover } from "@/components/notifications/notifications-p
 import { useStore } from "@/lib/store";
 import { useConversations } from "@/lib/hooks";
 import { useRole } from "@/lib/role-context";
+import { useSiteConfig } from "@/lib/site-config";
+import { featureEnabledFor } from "@/lib/site-config-defaults";
+import { FeedbackButton } from "@/components/feedback/feedback-dialog";
 import { visibleConversations } from "@/lib/permissions";
 import { visibleTasks } from "@/lib/visibility";
 import { cn } from "@/lib/utils";
@@ -38,6 +41,8 @@ const PER_GROUP = 5;
 export function Topbar() {
   const router = useRouter();
   const { user, role } = useRole();
+  const { config } = useSiteConfig();
+  const showFeedback = featureEnabledFor(config, "feedback", role);
   const { tasks, users } = useStore();
   const { data: conversationsData } = useConversations();
   const conversations = conversationsData ?? EMPTY_CONVERSATIONS;
@@ -167,6 +172,7 @@ export function Topbar() {
         </div>
       </div>
 
+      {showFeedback && <FeedbackButton />}
       <NotificationsPopover />
       <UserMenu />
     </header>

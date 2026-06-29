@@ -9,9 +9,24 @@
 import type {
   CommentCreateInputZ,
   CommentZ,
+  CompetitionAnnounceInputZ,
+  CompetitionCreateInputZ,
+  CompetitionEntryCreateInputZ,
+  CompetitionEntryUpdateInputZ,
+  CompetitionEntryZ,
+  CompetitionScoreUpsertInputZ,
+  CompetitionScoreZ,
+  CompetitionStatusZ,
+  CompetitionUpdateInputZ,
+  CompetitionZ,
   ConversationCreateInputZ,
   ConversationZ,
   EditorialChecklistZ,
+  EntryStatusZ,
+  FeedbackCreateInputZ,
+  FeedbackStatusZ,
+  FeedbackUpdateInputZ,
+  FeedbackZ,
   IssueSlotUpsertInputZ,
   IssueSlotZ,
   IssueUpdateInputZ,
@@ -35,6 +50,7 @@ import type {
   SensitiveFlagDecideInputZ,
   SensitiveFlagRaiseInputZ,
   SensitiveFlagZ,
+  SiteConfigPatchZ,
   SubmissionCreateInputZ,
   SubmissionZ,
   TaskCreateInputZ,
@@ -123,6 +139,40 @@ export interface ApiClient {
   ): Promise<ModerationReportZ[]>;
   hideMessage(messageId: string): Promise<MessageZ>;
 
+  // ── Feedback ──────────────────────────────────────────────────────────────
+  listFeedback(filter?: {
+    status?: FeedbackStatusZ;
+    authorId?: string;
+  }): Promise<FeedbackZ[]>;
+  createFeedback(input: FeedbackCreateInputZ): Promise<FeedbackZ>;
+  updateFeedback(id: string, patch: FeedbackUpdateInputZ): Promise<FeedbackZ>;
+
+  // ── Competitions ──────────────────────────────────────────────────────────
+  listCompetitions(): Promise<CompetitionZ[]>;
+  getCompetition(id: string): Promise<CompetitionZ | null>;
+  createCompetition(input: CompetitionCreateInputZ): Promise<CompetitionZ>;
+  updateCompetition(
+    id: string,
+    patch: CompetitionUpdateInputZ
+  ): Promise<CompetitionZ>;
+  setCompetitionStatus(
+    id: string,
+    status: CompetitionStatusZ
+  ): Promise<CompetitionZ>;
+  /** Mark a winner, flip non-winning entries, and publish results. */
+  announceCompetition(input: CompetitionAnnounceInputZ): Promise<CompetitionZ>;
+
+  listEntries(competitionId: string): Promise<CompetitionEntryZ[]>;
+  createEntry(input: CompetitionEntryCreateInputZ): Promise<CompetitionEntryZ>;
+  updateEntry(
+    id: string,
+    patch: CompetitionEntryUpdateInputZ
+  ): Promise<CompetitionEntryZ>;
+  setEntryStatus(id: string, status: EntryStatusZ): Promise<CompetitionEntryZ>;
+
+  listScores(competitionId: string): Promise<CompetitionScoreZ[]>;
+  upsertScore(input: CompetitionScoreUpsertInputZ): Promise<CompetitionScoreZ>;
+
   // ── Newsroom: sections ────────────────────────────────────────────────────
   listSections(): Promise<SectionZ[]>;
 
@@ -173,6 +223,12 @@ export interface ApiClient {
   }): Promise<SensitiveFlagZ[]>;
   raiseSensitiveFlag(input: SensitiveFlagRaiseInputZ): Promise<SensitiveFlagZ>;
   decideSensitiveFlag(input: SensitiveFlagDecideInputZ): Promise<SensitiveFlagZ>;
+
+  // ── Site settings (branding, feature toggles, workflow overrides) ─────────
+  /** The stored configuration patch (only fields an admin has changed). */
+  getSiteSettings(): Promise<SiteConfigPatchZ>;
+  /** Deep-merge `patch` into the stored config and return the new stored patch. */
+  updateSiteSettings(patch: SiteConfigPatchZ): Promise<SiteConfigPatchZ>;
 }
 
 export class ApiError extends Error {

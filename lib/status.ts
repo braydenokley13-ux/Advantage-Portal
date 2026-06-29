@@ -18,17 +18,16 @@ export type StatusBadgeTone = "default" | "secondary" | "warning" | "success";
  * Display rules per status. A single source of truth for labels, short
  * teen-readable definitions, and the suggested next action.
  */
-export const STATUS_DEFINITIONS: Record<
-  TaskStatus,
-  {
-    label: string;
-    /** One-line definition shown in tooltips and microcopy. */
-    description: string;
-    /** What the writer/editor should do next. */
-    nextAction: { writer: string; editor: string; leader: string };
-    badgeTone: StatusBadgeTone;
-  }
-> = {
+export type StatusDefinition = {
+  label: string;
+  /** One-line definition shown in tooltips and microcopy. */
+  description: string;
+  /** What the writer/editor should do next. */
+  nextAction: { writer: string; editor: string; leader: string };
+  badgeTone: StatusBadgeTone;
+};
+
+export const STATUS_DEFINITIONS: Record<TaskStatus, StatusDefinition> = {
   not_started: {
     label: "Not Started",
     description: "Assignment is open. Nobody has started drafting yet.",
@@ -112,3 +111,41 @@ export const SUBSTATE_LABEL: Record<NonNullable<TaskSubState>, string> = {
   fresh_draft: "Drafting",
   changes_requested: "Changes Requested",
 };
+
+/** Admin-editable presentation overrides for the fixed status keys. */
+export type StatusOverrides = Partial<
+  Record<
+    TaskStatus,
+    {
+      label?: string;
+      description?: string;
+      badgeTone?: StatusBadgeTone;
+      nextAction?: Partial<{ writer: string; editor: string; leader: string }>;
+    }
+  >
+>;
+
+/**
+ * Merge admin overrides (from site settings) over the built-in
+ * {@link STATUS_DEFINITIONS}. Status *keys* never change — only their
+ * human-facing label, description, badge tone, and next-action copy.
+ */
+export function resolveStatusDefinitions(
+  overrides?: StatusOverrides
+): Record<TaskStatus, StatusDefinition> {
+  if (!overrides) return STATUS_DEFINITIONS;
+  const out = {} as Record<TaskStatus, StatusDefinition>;
+  for (const key of Object.keys(STATUS_DEFINITIONS) as TaskStatus[]) {
+    const base = STATUS_DEFINITIONS[key];
+    const ov = overrides[key];
+    out[key] = ov
+      ? {
+          label: ov.label ?? base.label,
+          description: ov.description ?? base.description,
+          badgeTone: ov.badgeTone ?? base.badgeTone,
+          nextAction: { ...base.nextAction, ...(ov.nextAction ?? {}) },
+        }
+      : base;
+  }
+  return out;
+}

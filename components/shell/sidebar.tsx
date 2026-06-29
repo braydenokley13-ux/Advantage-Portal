@@ -6,12 +6,14 @@ import { motion } from "framer-motion";
 import { Feather } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRole } from "@/lib/role-context";
+import { useSiteConfig } from "@/lib/site-config";
 import { navForRole } from "./nav-config";
 
 export function Sidebar() {
   const { role } = useRole();
+  const { config } = useSiteConfig();
   const pathname = usePathname();
-  const items = navForRole(role);
+  const items = navForRole(role, config);
 
   return (
     <aside className="hidden md:flex md:w-64 md:flex-col border-r border-border bg-card/60 backdrop-blur">
@@ -21,10 +23,10 @@ export function Sidebar() {
         </div>
         <div className="flex flex-col">
           <span className="text-sm font-semibold tracking-tight">
-            Advantage
+            {config.brand.name}
           </span>
           <span className="text-xs text-muted-foreground -mt-0.5">
-            Newsroom
+            {config.brand.tagline}
           </span>
         </div>
       </div>

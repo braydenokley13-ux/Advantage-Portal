@@ -11,6 +11,8 @@ const ALL_KINDS: NotificationKind[] = [
   "task_complete",
   "message",
   "announcement",
+  "feedback",
+  "competition",
 ];
 
 describe("NOTIFICATION_META", () => {

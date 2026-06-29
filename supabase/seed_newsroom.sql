@@ -295,3 +295,81 @@ insert into public.sensitive_flags (
    '00000000-0000-0000-0000-000000000005',
    now() - interval '1 day')
 on conflict (id) do nothing;
+
+-- ── competitions ─────────────────────────────────────────────────────────
+-- One open competition (demo entering) and one in judging with entries and
+-- scores (demo the judge panel + leaderboard). Requires migration 0019.
+insert into public.competitions (
+  id, title, prompt, description, rules, word_limit, opens_at, closes_at,
+  status, anonymized_judging, created_by_id
+) values
+  ('c0000000-0000-0000-0000-000000000001', 'Spring Voices Essay Prize',
+   'What is one change you would make to our school, and why does it matter?',
+   'Our termly essay prize, open to every member of the newsroom.',
+   'Original work only. 800 words max. One entry per person.',
+   800, now() - interval '2 days', now() + interval '14 days',
+   'open', true, '00000000-0000-0000-0000-000000000005'),
+  ('c0000000-0000-0000-0000-000000000002', 'Winter Reflections Contest',
+   'Write about a moment this year that changed how you see the world.',
+   'Judged blind by the editor team against a three-part rubric.',
+   'Original work only. 600 words max.',
+   600, now() - interval '20 days', now() - interval '2 days',
+   'judging', true, '00000000-0000-0000-0000-000000000005')
+on conflict (id) do nothing;
+
+insert into public.competition_entries (
+  id, competition_id, author_id, title, type, content, word_count, status
+) values
+  ('c1000000-0000-0000-0000-000000000001',
+   'c0000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001',
+   'The bus window', 'inline',
+   'A short reflection on the long ride home and what it taught me about patience…',
+   540, 'submitted'),
+  ('c1000000-0000-0000-0000-000000000002',
+   'c0000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000002',
+   'Quiet mornings', 'inline',
+   'On waking before the house and learning to like my own company…',
+   480, 'submitted'),
+  ('c1000000-0000-0000-0000-000000000003',
+   'c0000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000003',
+   'The last home game', 'inline',
+   'What the final whistle of the season actually meant to the people in the stands…',
+   590, 'submitted')
+on conflict (id) do nothing;
+
+-- Scores from the editor (004) and leader (005); totals drive the leaderboard.
+insert into public.competition_scores (
+  id, entry_id, judge_id, score, rubric, notes
+) values
+  ('c2000000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000001',
+   '00000000-0000-0000-0000-000000000004', 12,
+   jsonb_build_object('originality',5,'writing',4,'argument',3), 'Strong voice.'),
+  ('c2000000-0000-0000-0000-000000000002', 'c1000000-0000-0000-0000-000000000001',
+   '00000000-0000-0000-0000-000000000005', 13,
+   jsonb_build_object('originality',5,'writing',4,'argument',4), null),
+  ('c2000000-0000-0000-0000-000000000003', 'c1000000-0000-0000-0000-000000000002',
+   '00000000-0000-0000-0000-000000000004', 10,
+   jsonb_build_object('originality',4,'writing',3,'argument',3), null),
+  ('c2000000-0000-0000-0000-000000000004', 'c1000000-0000-0000-0000-000000000003',
+   '00000000-0000-0000-0000-000000000004', 14,
+   jsonb_build_object('originality',5,'writing',5,'argument',4), 'Best of the batch.'),
+  ('c2000000-0000-0000-0000-000000000005', 'c1000000-0000-0000-0000-000000000003',
+   '00000000-0000-0000-0000-000000000005', 14,
+   jsonb_build_object('originality',5,'writing',5,'argument',4), null)
+on conflict (id) do nothing;
+
+-- ── feedback ─────────────────────────────────────────────────────────────
+insert into public.feedback (
+  id, author_id, category, subject, message, rating, status
+) values
+  ('d0000000-0000-0000-0000-000000000001',
+   '00000000-0000-0000-0000-000000000001', 'feature_idea',
+   'Dark mode for late-night editing',
+   'It would be great to have a dark theme — a lot of us write at night.',
+   5, 'open'),
+  ('d0000000-0000-0000-0000-000000000002',
+   '00000000-0000-0000-0000-000000000002', 'story_or_content',
+   'Loved the markets explainer',
+   'The yield-curve piece finally made it click for me. More like that please!',
+   5, 'triaged')
+on conflict (id) do nothing;

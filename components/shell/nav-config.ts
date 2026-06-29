@@ -13,15 +13,21 @@ import {
   Lightbulb,
   Newspaper,
   Library,
+  Settings2,
+  MessageSquarePlus,
+  Trophy,
   type LucideIcon,
 } from "lucide-react";
 import type { Role } from "@/lib/types";
+import { featureEnabledFor, type SiteConfig } from "@/lib/site-config-defaults";
 
 export type NavItem = {
   href: string;
   label: string;
   icon: LucideIcon;
   roles: Role[];
+  /** Optional feature-toggle key; item is hidden when the feature is off. */
+  feature?: string;
 };
 
 export const NAV_ITEMS: NavItem[] = [
@@ -60,6 +66,13 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Archive",
     icon: Library,
     roles: ["writer", "editor", "leader", "admin"],
+  },
+  {
+    href: "/competitions",
+    label: "Competitions",
+    icon: Trophy,
+    roles: ["writer", "editor", "leader", "admin"],
+    feature: "competitions",
   },
   {
     href: "/reviews",
@@ -104,6 +117,19 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["admin"],
   },
   {
+    href: "/admin/settings",
+    label: "Settings",
+    icon: Settings2,
+    roles: ["admin"],
+  },
+  {
+    href: "/admin/feedback",
+    label: "Feedback",
+    icon: MessageSquarePlus,
+    roles: ["leader", "admin"],
+    feature: "feedback",
+  },
+  {
     href: "/admin/moderation",
     label: "Moderation",
     icon: ShieldAlert,
@@ -117,6 +143,11 @@ export const NAV_ITEMS: NavItem[] = [
   },
 ];
 
-export function navForRole(role: Role): NavItem[] {
-  return NAV_ITEMS.filter((item) => item.roles.includes(role));
+export function navForRole(role: Role, config?: SiteConfig): NavItem[] {
+  return NAV_ITEMS.filter((item) => {
+    if (!item.roles.includes(role)) return false;
+    if (item.feature && config && !featureEnabledFor(config, item.feature, role))
+      return false;
+    return true;
+  });
 }
