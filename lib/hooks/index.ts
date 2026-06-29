@@ -15,6 +15,9 @@ import { visibleTasks } from "@/lib/visibility";
 import { useSession } from "@/lib/session";
 import type {
   CommentZ,
+  CompetitionEntryZ,
+  CompetitionScoreZ,
+  CompetitionZ,
   ConversationZ,
   EditorialChecklistZ,
   FeedbackStatusZ,
@@ -141,6 +144,42 @@ export function useFeedback(filter?: {
   return useApiResource(
     () => api.listFeedback(filter),
     [api, filter?.status, filter?.authorId]
+  );
+}
+
+// ── Competitions ──────────────────────────────────────────────────────────────
+export function useCompetitions(): ApiResource<CompetitionZ[]> {
+  const api = useApiClient();
+  return useApiResource(() => api.listCompetitions(), [api]);
+}
+
+export function useCompetition(
+  id: string | null
+): ApiResource<CompetitionZ | null> {
+  const api = useApiClient();
+  return useApiResource(
+    () => (id ? api.getCompetition(id) : Promise.resolve(null)),
+    [api, id]
+  );
+}
+
+export function useCompetitionEntries(
+  competitionId: string | null
+): ApiResource<CompetitionEntryZ[]> {
+  const api = useApiClient();
+  return useApiResource(
+    () => (competitionId ? api.listEntries(competitionId) : Promise.resolve([])),
+    [api, competitionId]
+  );
+}
+
+export function useCompetitionScores(
+  competitionId: string | null
+): ApiResource<CompetitionScoreZ[]> {
+  const api = useApiClient();
+  return useApiResource(
+    () => (competitionId ? api.listScores(competitionId) : Promise.resolve([])),
+    [api, competitionId]
   );
 }
 

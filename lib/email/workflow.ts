@@ -187,6 +187,45 @@ export function emailOnFeedbackSubmitted(
   });
 }
 
+/** A competition opened for entries → invite the whole active team. */
+export function emailOnCompetitionOpen(users: User[], title: string): void {
+  fanOutNotificationEmail(
+    users.filter((u) => u.active !== false).map((u) => u.id),
+    {
+      kind: "competition",
+      title: `New essay competition: ${title}`,
+      body: "Entries are open — submit your essay before the deadline.",
+      actionPath: "/competitions",
+    }
+  );
+}
+
+/** A member submitted an entry → tell the managers running the competition. */
+export function emailOnEntryReceived(
+  users: User[],
+  competitionTitle: string
+): void {
+  fanOutNotificationEmail(staffIds(users, ["leader", "admin"]), {
+    kind: "competition",
+    title: `New entry: ${competitionTitle}`,
+    body: "A new essay was submitted to the competition.",
+    actionPath: "/competitions",
+  });
+}
+
+/** A winner was announced → tell every entrant how the competition ended. */
+export function emailOnWinnerAnnounced(
+  entrantIds: Array<string | undefined | null>,
+  competitionTitle: string
+): void {
+  fanOutNotificationEmail(entrantIds, {
+    kind: "competition",
+    title: `Results are in: ${competitionTitle}`,
+    body: "The winner has been announced — see how your entry did.",
+    actionPath: "/competitions",
+  });
+}
+
 /** A writer asked for more time → alert leaders and admins to triage it. */
 export function emailOnExtensionRequest(users: User[], reason: string): void {
   fanOutNotificationEmail(staffIds(users, ["leader", "admin"]), {

@@ -383,3 +383,71 @@ export interface Feedback {
   createdAt: string;
   updatedAt: string;
 }
+
+// ── Essay competitions ──────────────────────────────────────────────────────
+
+export type CompetitionStatus =
+  | "draft"
+  | "open"
+  | "judging"
+  | "announced"
+  | "archived";
+
+export type EntryStatus =
+  | "submitted"
+  | "shortlisted"
+  | "winner"
+  | "not_selected"
+  | "withdrawn";
+
+/** An essay competition with scored judging. */
+export interface Competition {
+  id: string;
+  title: string;
+  /** The essay prompt / question entrants respond to. */
+  prompt: string;
+  description: string;
+  rules: string;
+  /** Optional max word count for entries. */
+  wordLimit?: number;
+  opensAt: string;
+  /** Entry deadline. */
+  closesAt: string;
+  status: CompetitionStatus;
+  /** When true, judges don't see author identity until the winner is announced. */
+  anonymizedJudging: boolean;
+  winnerEntryId?: string;
+  createdById?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A member's entry into a competition (reuses the submission shape). */
+export interface CompetitionEntry {
+  id: string;
+  competitionId: string;
+  authorId: string;
+  title: string;
+  type: SubmissionType;
+  /** inline → markdown; google_doc → URL; file → filename. */
+  content: string;
+  file?: SubmissionFileMeta;
+  wordCount?: number;
+  status: EntryStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A judge's rubric score for one entry. */
+export interface CompetitionScore {
+  id: string;
+  entryId: string;
+  judgeId: string;
+  /** Total score (sum of the rubric criteria). */
+  score: number;
+  /** Per-criterion scores, keyed by rubric key. */
+  rubric?: Record<string, number>;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}

@@ -13,6 +13,9 @@ import { ApiError, type ApiClient } from "./client";
 import type {
   AssignmentBriefZ,
   CommentZ,
+  CompetitionEntryZ,
+  CompetitionScoreZ,
+  CompetitionZ,
   ConversationZ,
   EditorialChecklistZ,
   FeedbackZ,
@@ -502,6 +505,114 @@ function rowToFeedback(r: FeedbackRow): FeedbackZ {
     adminNote: r.admin_note ?? undefined,
     resolvedById: r.resolved_by_id ?? undefined,
     resolvedAt: r.resolved_at ?? undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+type CompetitionRow = {
+  id: string;
+  title: string;
+  prompt: string;
+  description: string;
+  rules: string;
+  word_limit: number | null;
+  opens_at: string;
+  closes_at: string;
+  status: CompetitionZ["status"];
+  anonymized_judging: boolean;
+  winner_entry_id: string | null;
+  created_by_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const COMPETITION_COLUMNS =
+  "id, title, prompt, description, rules, word_limit, opens_at, closes_at, status, anonymized_judging, winner_entry_id, created_by_id, created_at, updated_at";
+
+function rowToCompetition(r: CompetitionRow): CompetitionZ {
+  return {
+    id: r.id,
+    title: r.title,
+    prompt: r.prompt,
+    description: r.description,
+    rules: r.rules,
+    wordLimit: r.word_limit ?? undefined,
+    opensAt: r.opens_at,
+    closesAt: r.closes_at,
+    status: r.status,
+    anonymizedJudging: r.anonymized_judging,
+    winnerEntryId: r.winner_entry_id ?? undefined,
+    createdById: r.created_by_id ?? undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+type CompetitionEntryRow = {
+  id: string;
+  competition_id: string;
+  author_id: string;
+  title: string;
+  type: CompetitionEntryZ["type"];
+  content: string;
+  file_filename: string | null;
+  file_mime_type: string | null;
+  file_size_bytes: number | null;
+  word_count: number | null;
+  status: CompetitionEntryZ["status"];
+  created_at: string;
+  updated_at: string;
+};
+
+const ENTRY_COLUMNS =
+  "id, competition_id, author_id, title, type, content, file_filename, file_mime_type, file_size_bytes, word_count, status, created_at, updated_at";
+
+function rowToEntry(r: CompetitionEntryRow): CompetitionEntryZ {
+  return {
+    id: r.id,
+    competitionId: r.competition_id,
+    authorId: r.author_id,
+    title: r.title,
+    type: r.type,
+    content: r.content,
+    file: r.file_filename
+      ? {
+          filename: r.file_filename,
+          mimeType: r.file_mime_type ?? "application/octet-stream",
+          sizeBytes: r.file_size_bytes ?? 0,
+        }
+      : undefined,
+    wordCount: r.word_count ?? undefined,
+    status: r.status,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+type CompetitionScoreRow = {
+  id: string;
+  entry_id: string;
+  judge_id: string;
+  score: number;
+  rubric: Record<string, number> | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const SCORE_COLUMNS =
+  "id, entry_id, judge_id, score, rubric, notes, created_at, updated_at";
+
+function rowToScore(r: CompetitionScoreRow): CompetitionScoreZ {
+  return {
+    id: r.id,
+    entryId: r.entry_id,
+    judgeId: r.judge_id,
+    score: r.score,
+    rubric:
+      r.rubric && Object.keys(r.rubric).length > 0 ? r.rubric : undefined,
+    notes: r.notes ?? undefined,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -1989,6 +2100,244 @@ export class SupabaseApiClient implements ApiClient {
       .single();
     if (error) this.err("updateFeedback", error);
     return rowToFeedback(data as FeedbackRow);
+  }
+
+  // ── Competitions ────────────────────────────────────────────────────────
+  async listCompetitions(): Promise<CompetitionZ[]> {
+    const { data, error } = await this.sb
+      .from("competitions")
+      .select(COMPETITION_COLUMNS)
+      .order("created_at", { ascending: false });
+    if (error) this.err("listCompetitions", error);
+    return (data ?? []).map((r) => rowToCompetition(r as CompetitionRow));
+  }
+
+  async getCompetition(id: string): Promise<CompetitionZ | null> {
+    const { data, error } = await this.sb
+      .from("competitions")
+      .select(COMPETITION_COLUMNS)
+      .eq("id", id)
+      .maybeSingle();
+    if (error) this.err("getCompetition", error);
+    return data ? rowToCompetition(data as CompetitionRow) : null;
+  }
+
+  async createCompetition(input: {
+    title: string;
+    prompt?: string;
+    description?: string;
+    rules?: string;
+    wordLimit?: number;
+    opensAt?: string;
+    closesAt: string;
+    anonymizedJudging?: boolean;
+    createdById: string;
+  }): Promise<CompetitionZ> {
+    this.assertSelf("createCompetition", input.createdById);
+    const { data, error } = await this.sb
+      .from("competitions")
+      .insert({
+        title: input.title,
+        prompt: input.prompt ?? "",
+        description: input.description ?? "",
+        rules: input.rules ?? "",
+        word_limit: input.wordLimit ?? null,
+        opens_at: input.opensAt ?? new Date().toISOString(),
+        closes_at: input.closesAt,
+        anonymized_judging: input.anonymizedJudging ?? true,
+        created_by_id: input.createdById,
+        status: "draft",
+      })
+      .select(COMPETITION_COLUMNS)
+      .single();
+    if (error) this.err("createCompetition", error);
+    return rowToCompetition(data as CompetitionRow);
+  }
+
+  async updateCompetition(
+    id: string,
+    patch: {
+      title?: string;
+      prompt?: string;
+      description?: string;
+      rules?: string;
+      wordLimit?: number | null;
+      opensAt?: string;
+      closesAt?: string;
+      anonymizedJudging?: boolean;
+      status?: CompetitionZ["status"];
+    }
+  ): Promise<CompetitionZ> {
+    const update: Record<string, unknown> = {};
+    if (patch.title !== undefined) update.title = patch.title;
+    if (patch.prompt !== undefined) update.prompt = patch.prompt;
+    if (patch.description !== undefined) update.description = patch.description;
+    if (patch.rules !== undefined) update.rules = patch.rules;
+    if (patch.wordLimit !== undefined) update.word_limit = patch.wordLimit;
+    if (patch.opensAt !== undefined) update.opens_at = patch.opensAt;
+    if (patch.closesAt !== undefined) update.closes_at = patch.closesAt;
+    if (patch.anonymizedJudging !== undefined)
+      update.anonymized_judging = patch.anonymizedJudging;
+    if (patch.status !== undefined) update.status = patch.status;
+    const { data, error } = await this.sb
+      .from("competitions")
+      .update(update)
+      .eq("id", id)
+      .select(COMPETITION_COLUMNS)
+      .single();
+    if (error) this.err("updateCompetition", error);
+    return rowToCompetition(data as CompetitionRow);
+  }
+
+  async setCompetitionStatus(
+    id: string,
+    status: CompetitionZ["status"]
+  ): Promise<CompetitionZ> {
+    return this.updateCompetition(id, { status });
+  }
+
+  async announceCompetition(input: {
+    competitionId: string;
+    winnerEntryId: string;
+    decidedById: string;
+  }): Promise<CompetitionZ> {
+    this.assertSelf("announceCompetition", input.decidedById);
+    // Crown the winner, then mark every other live entry not-selected.
+    const { error: wErr } = await this.sb
+      .from("competition_entries")
+      .update({ status: "winner" })
+      .eq("id", input.winnerEntryId);
+    if (wErr) this.err("announceCompetition(winner)", wErr);
+    const { error: rErr } = await this.sb
+      .from("competition_entries")
+      .update({ status: "not_selected" })
+      .eq("competition_id", input.competitionId)
+      .neq("id", input.winnerEntryId)
+      .neq("status", "withdrawn");
+    if (rErr) this.err("announceCompetition(others)", rErr);
+    const { data, error } = await this.sb
+      .from("competitions")
+      .update({ winner_entry_id: input.winnerEntryId, status: "announced" })
+      .eq("id", input.competitionId)
+      .select(COMPETITION_COLUMNS)
+      .single();
+    if (error) this.err("announceCompetition", error);
+    return rowToCompetition(data as CompetitionRow);
+  }
+
+  async listEntries(competitionId: string): Promise<CompetitionEntryZ[]> {
+    const { data, error } = await this.sb
+      .from("competition_entries")
+      .select(ENTRY_COLUMNS)
+      .eq("competition_id", competitionId)
+      .order("created_at", { ascending: true });
+    if (error) this.err("listEntries", error);
+    return (data ?? []).map((r) => rowToEntry(r as CompetitionEntryRow));
+  }
+
+  async createEntry(input: {
+    competitionId: string;
+    authorId: string;
+    title: string;
+    type: CompetitionEntryZ["type"];
+    content: string;
+    file?: { filename: string; mimeType: string; sizeBytes: number };
+    wordCount?: number;
+  }): Promise<CompetitionEntryZ> {
+    this.assertSelf("createEntry", input.authorId);
+    const { data, error } = await this.sb
+      .from("competition_entries")
+      .insert({
+        competition_id: input.competitionId,
+        author_id: input.authorId,
+        title: input.title,
+        type: input.type,
+        content: input.content,
+        file_filename: input.file?.filename ?? null,
+        file_mime_type: input.file?.mimeType ?? null,
+        file_size_bytes: input.file?.sizeBytes ?? null,
+        word_count: input.wordCount ?? null,
+        status: "submitted",
+      })
+      .select(ENTRY_COLUMNS)
+      .single();
+    if (error) this.err("createEntry", error);
+    return rowToEntry(data as CompetitionEntryRow);
+  }
+
+  async updateEntry(
+    id: string,
+    patch: {
+      title?: string;
+      content?: string;
+      type?: CompetitionEntryZ["type"];
+      file?: { filename: string; mimeType: string; sizeBytes: number };
+      wordCount?: number;
+      status?: CompetitionEntryZ["status"];
+    }
+  ): Promise<CompetitionEntryZ> {
+    const update: Record<string, unknown> = {};
+    if (patch.title !== undefined) update.title = patch.title;
+    if (patch.content !== undefined) update.content = patch.content;
+    if (patch.type !== undefined) update.type = patch.type;
+    if (patch.file !== undefined) {
+      update.file_filename = patch.file.filename;
+      update.file_mime_type = patch.file.mimeType;
+      update.file_size_bytes = patch.file.sizeBytes;
+    }
+    if (patch.wordCount !== undefined) update.word_count = patch.wordCount;
+    if (patch.status !== undefined) update.status = patch.status;
+    const { data, error } = await this.sb
+      .from("competition_entries")
+      .update(update)
+      .eq("id", id)
+      .select(ENTRY_COLUMNS)
+      .single();
+    if (error) this.err("updateEntry", error);
+    return rowToEntry(data as CompetitionEntryRow);
+  }
+
+  async setEntryStatus(
+    id: string,
+    status: CompetitionEntryZ["status"]
+  ): Promise<CompetitionEntryZ> {
+    return this.updateEntry(id, { status });
+  }
+
+  async listScores(competitionId: string): Promise<CompetitionScoreZ[]> {
+    // Filter scores by the parent entry's competition via an inner embed.
+    const { data, error } = await this.sb
+      .from("competition_scores")
+      .select(`${SCORE_COLUMNS}, competition_entries!inner(competition_id)`)
+      .eq("competition_entries.competition_id", competitionId);
+    if (error) this.err("listScores", error);
+    return (data ?? []).map((r) => rowToScore(r as CompetitionScoreRow));
+  }
+
+  async upsertScore(input: {
+    entryId: string;
+    judgeId: string;
+    score: number;
+    rubric?: Record<string, number>;
+    notes?: string;
+  }): Promise<CompetitionScoreZ> {
+    this.assertSelf("upsertScore", input.judgeId);
+    const { data, error } = await this.sb
+      .from("competition_scores")
+      .upsert(
+        {
+          entry_id: input.entryId,
+          judge_id: input.judgeId,
+          score: input.score,
+          rubric: input.rubric ?? {},
+          notes: input.notes ?? null,
+        },
+        { onConflict: "entry_id,judge_id" }
+      )
+      .select(SCORE_COLUMNS)
+      .single();
+    if (error) this.err("upsertScore", error);
+    return rowToScore(data as CompetitionScoreRow);
   }
 
   // ── Site settings ───────────────────────────────────────────────────────

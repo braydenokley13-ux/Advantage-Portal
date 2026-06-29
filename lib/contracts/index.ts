@@ -464,6 +464,148 @@ export const FeedbackUpdateInput = z.object({
 export type FeedbackUpdateInputZ = z.infer<typeof FeedbackUpdateInput>;
 
 // ────────────────────────────────────────────────────────────────────────────
+// Essay competitions (internal, scored judging)
+// ────────────────────────────────────────────────────────────────────────────
+
+export const CompetitionStatusSchema = z.enum([
+  "draft",
+  "open",
+  "judging",
+  "announced",
+  "archived",
+]);
+export type CompetitionStatusZ = z.infer<typeof CompetitionStatusSchema>;
+
+export const EntryStatusSchema = z.enum([
+  "submitted",
+  "shortlisted",
+  "winner",
+  "not_selected",
+  "withdrawn",
+]);
+export type EntryStatusZ = z.infer<typeof EntryStatusSchema>;
+
+export const CompetitionSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  prompt: z.string(),
+  description: z.string(),
+  rules: z.string(),
+  wordLimit: z.number().int().positive().optional(),
+  opensAt: isoDate,
+  closesAt: isoDate,
+  status: CompetitionStatusSchema,
+  anonymizedJudging: z.boolean(),
+  winnerEntryId: z.string().optional(),
+  createdById: z.string().optional(),
+  createdAt: isoDate,
+  updatedAt: isoDate,
+});
+export type CompetitionZ = z.infer<typeof CompetitionSchema>;
+
+export const CompetitionCreateInput = z.object({
+  title: z.string().min(1),
+  prompt: z.string().default(""),
+  description: z.string().default(""),
+  rules: z.string().default(""),
+  wordLimit: z.number().int().positive().optional(),
+  opensAt: isoDate.optional(),
+  closesAt: isoDate,
+  anonymizedJudging: z.boolean().optional(),
+  createdById: z.string(),
+});
+export type CompetitionCreateInputZ = z.infer<typeof CompetitionCreateInput>;
+
+export const CompetitionUpdateInput = z
+  .object({
+    title: z.string().min(1),
+    prompt: z.string(),
+    description: z.string(),
+    rules: z.string(),
+    wordLimit: z.number().int().positive().nullable(),
+    opensAt: isoDate,
+    closesAt: isoDate,
+    anonymizedJudging: z.boolean(),
+    status: CompetitionStatusSchema,
+  })
+  .partial();
+export type CompetitionUpdateInputZ = z.infer<typeof CompetitionUpdateInput>;
+
+export const CompetitionEntrySchema = z.object({
+  id: z.string(),
+  competitionId: z.string(),
+  authorId: z.string(),
+  title: z.string(),
+  type: SubmissionTypeSchema,
+  content: z.string(),
+  file: SubmissionFileMetaSchema.optional(),
+  wordCount: z.number().int().nonnegative().optional(),
+  status: EntryStatusSchema,
+  createdAt: isoDate,
+  updatedAt: isoDate,
+});
+export type CompetitionEntryZ = z.infer<typeof CompetitionEntrySchema>;
+
+export const CompetitionEntryCreateInput = z.object({
+  competitionId: z.string(),
+  authorId: z.string(),
+  title: z.string().min(1),
+  type: SubmissionTypeSchema,
+  content: z.string().min(1),
+  file: SubmissionFileMetaSchema.optional(),
+  wordCount: z.number().int().nonnegative().optional(),
+});
+export type CompetitionEntryCreateInputZ = z.infer<
+  typeof CompetitionEntryCreateInput
+>;
+
+export const CompetitionEntryUpdateInput = z
+  .object({
+    title: z.string().min(1),
+    content: z.string().min(1),
+    type: SubmissionTypeSchema,
+    file: SubmissionFileMetaSchema.optional(),
+    wordCount: z.number().int().nonnegative(),
+    status: EntryStatusSchema,
+  })
+  .partial();
+export type CompetitionEntryUpdateInputZ = z.infer<
+  typeof CompetitionEntryUpdateInput
+>;
+
+export const CompetitionScoreSchema = z.object({
+  id: z.string(),
+  entryId: z.string(),
+  judgeId: z.string(),
+  score: z.number().int().nonnegative(),
+  rubric: z.record(z.string(), z.number()).optional(),
+  notes: z.string().optional(),
+  createdAt: isoDate,
+  updatedAt: isoDate,
+});
+export type CompetitionScoreZ = z.infer<typeof CompetitionScoreSchema>;
+
+export const CompetitionScoreUpsertInput = z.object({
+  entryId: z.string(),
+  judgeId: z.string(),
+  score: z.number().int().nonnegative(),
+  rubric: z.record(z.string(), z.number()).optional(),
+  notes: z.string().optional(),
+});
+export type CompetitionScoreUpsertInputZ = z.infer<
+  typeof CompetitionScoreUpsertInput
+>;
+
+export const CompetitionAnnounceInput = z.object({
+  competitionId: z.string(),
+  winnerEntryId: z.string(),
+  decidedById: z.string(),
+});
+export type CompetitionAnnounceInputZ = z.infer<
+  typeof CompetitionAnnounceInput
+>;
+
+// ────────────────────────────────────────────────────────────────────────────
 // Newsroom workflow — sections, pitches, issues, slots, checklists, flags
 // ────────────────────────────────────────────────────────────────────────────
 

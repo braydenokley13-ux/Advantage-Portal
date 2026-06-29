@@ -1,4 +1,4 @@
-import type { Conversation, Role, Task, User } from "./types";
+import type { Competition, Conversation, Role, Task, User } from "./types";
 
 /** Writer may submit only if they own the task and it isn't complete. */
 export function canSubmit(args: { task: Task; user: User }): boolean {
@@ -121,4 +121,26 @@ export function canSubmitFeedback(role: Role) {
 /** Triage the feedback queue — leaders and admins. */
 export function canTriageFeedback(role: Role) {
   return role === "leader" || role === "admin";
+}
+
+/** Create / edit competitions and announce winners. */
+export function canManageCompetitions(role: Role) {
+  return role === "leader" || role === "admin";
+}
+
+/** Score competition entries. Editors judge alongside leaders/admins. */
+export function canJudgeCompetitions(role: Role) {
+  return role === "editor" || role === "leader" || role === "admin";
+}
+
+/** A member may enter while the competition is open and before it closes. */
+export function canEnterCompetition(args: {
+  competition: Competition;
+  user: User;
+}): boolean {
+  if (args.user.active === false) return false;
+  return (
+    args.competition.status === "open" &&
+    new Date(args.competition.closesAt).getTime() > Date.now()
+  );
 }

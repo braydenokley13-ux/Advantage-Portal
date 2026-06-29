@@ -15,6 +15,7 @@ import {
   Library,
   Settings2,
   MessageSquarePlus,
+  Trophy,
   type LucideIcon,
 } from "lucide-react";
 import type { Role } from "@/lib/types";
@@ -65,6 +66,13 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Archive",
     icon: Library,
     roles: ["writer", "editor", "leader", "admin"],
+  },
+  {
+    href: "/competitions",
+    label: "Competitions",
+    icon: Trophy,
+    roles: ["writer", "editor", "leader", "admin"],
+    feature: "competitions",
   },
   {
     href: "/reviews",

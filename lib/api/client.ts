@@ -9,9 +9,20 @@
 import type {
   CommentCreateInputZ,
   CommentZ,
+  CompetitionAnnounceInputZ,
+  CompetitionCreateInputZ,
+  CompetitionEntryCreateInputZ,
+  CompetitionEntryUpdateInputZ,
+  CompetitionEntryZ,
+  CompetitionScoreUpsertInputZ,
+  CompetitionScoreZ,
+  CompetitionStatusZ,
+  CompetitionUpdateInputZ,
+  CompetitionZ,
   ConversationCreateInputZ,
   ConversationZ,
   EditorialChecklistZ,
+  EntryStatusZ,
   FeedbackCreateInputZ,
   FeedbackStatusZ,
   FeedbackUpdateInputZ,
@@ -135,6 +146,32 @@ export interface ApiClient {
   }): Promise<FeedbackZ[]>;
   createFeedback(input: FeedbackCreateInputZ): Promise<FeedbackZ>;
   updateFeedback(id: string, patch: FeedbackUpdateInputZ): Promise<FeedbackZ>;
+
+  // ── Competitions ──────────────────────────────────────────────────────────
+  listCompetitions(): Promise<CompetitionZ[]>;
+  getCompetition(id: string): Promise<CompetitionZ | null>;
+  createCompetition(input: CompetitionCreateInputZ): Promise<CompetitionZ>;
+  updateCompetition(
+    id: string,
+    patch: CompetitionUpdateInputZ
+  ): Promise<CompetitionZ>;
+  setCompetitionStatus(
+    id: string,
+    status: CompetitionStatusZ
+  ): Promise<CompetitionZ>;
+  /** Mark a winner, flip non-winning entries, and publish results. */
+  announceCompetition(input: CompetitionAnnounceInputZ): Promise<CompetitionZ>;
+
+  listEntries(competitionId: string): Promise<CompetitionEntryZ[]>;
+  createEntry(input: CompetitionEntryCreateInputZ): Promise<CompetitionEntryZ>;
+  updateEntry(
+    id: string,
+    patch: CompetitionEntryUpdateInputZ
+  ): Promise<CompetitionEntryZ>;
+  setEntryStatus(id: string, status: EntryStatusZ): Promise<CompetitionEntryZ>;
+
+  listScores(competitionId: string): Promise<CompetitionScoreZ[]>;
+  upsertScore(input: CompetitionScoreUpsertInputZ): Promise<CompetitionScoreZ>;
 
   // ── Newsroom: sections ────────────────────────────────────────────────────
   listSections(): Promise<SectionZ[]>;
