@@ -5,8 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { initials, cn } from "@/lib/utils";
 import { useStore } from "@/lib/store";
 import { useRole } from "@/lib/role-context";
-import { STATUS_LABELS } from "@/lib/kanban-rules";
-import { STATUS_DEFINITIONS } from "@/lib/status";
+import { useStatusDefinitions } from "@/lib/use-status";
 import type { Task } from "@/lib/types";
 import { BookOpen, Calendar, Clock } from "lucide-react";
 import { format, isPast, formatDistanceToNowStrict } from "date-fns";
@@ -36,6 +35,7 @@ export function TaskRow({
 }) {
   const { users } = useStore();
   const { user: viewer } = useRole();
+  const statusDefs = useStatusDefinitions();
   const writer = users.find((u) => u.id === task.writerId);
   const editor = task.editorId
     ? users.find((u) => u.id === task.editorId)
@@ -78,9 +78,9 @@ export function TaskRow({
       </div>
       <Badge
         variant={STATUS_TONE[task.status]}
-        title={STATUS_DEFINITIONS[task.status].description}
+        title={statusDefs[task.status].description}
       >
-        {STATUS_LABELS[task.status]}
+        {statusDefs[task.status].label}
       </Badge>
       {editor && (
         <Avatar className="h-7 w-7 hidden sm:flex">

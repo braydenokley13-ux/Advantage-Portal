@@ -26,6 +26,8 @@ import {
   resolveSiteConfig,
   type SiteConfig,
 } from "./site-config-defaults";
+import { setEmailDefaultsOverride } from "./notification-policy";
+import { setChecklistTemplateOverride } from "./checklist-template";
 import type { SiteConfigPatchZ } from "./contracts";
 
 type SiteConfigValue = {
@@ -73,6 +75,16 @@ export function SiteConfigProvider({ children }: { children: React.ReactNode }) 
     root.style.setProperty("--brand-from", config.brand.accentFrom);
     root.style.setProperty("--brand-to", config.brand.accentTo);
   }, [config.brand.accentFrom, config.brand.accentTo]);
+
+  // Push workflow overrides into the dependency-free policy modules so the
+  // checklist seed and email-default baseline reflect Settings without
+  // threading config through every call site.
+  useEffect(() => {
+    setEmailDefaultsOverride(config.notificationDefaults);
+  }, [config.notificationDefaults]);
+  useEffect(() => {
+    setChecklistTemplateOverride(config.checklistTemplate);
+  }, [config.checklistTemplate]);
 
   const save = useCallback(
     async (patch: SiteConfigPatchZ) => {

@@ -27,18 +27,37 @@ export const EMAIL_DEFAULTS: Record<NotificationKind, boolean> = {
 /** Optional per-user override map (e.g. from the preferences screen). */
 export type EmailPrefMap = Partial<Record<NotificationKind, boolean>>;
 
+// Admin-configured baseline (Settings → Notifications), pushed in by the site
+// config provider. Sits between a user's saved preference and the built-in
+// EMAIL_DEFAULTS.
+let _adminDefaults: Partial<Record<string, boolean>> = {};
+
+/** Replace the admin-configured email baseline from site settings. */
+export function setEmailDefaultsOverride(
+  map: Partial<Record<string, boolean>> | null | undefined
+): void {
+  _adminDefaults = map ?? {};
+}
+
+/** The effective email default for a kind: admin baseline, else built-in. */
+export function effectiveEmailDefault(kind: NotificationKind): boolean {
+  const admin = _adminDefaults[kind];
+  if (typeof admin === "boolean") return admin;
+  return EMAIL_DEFAULTS[kind] ?? false;
+}
+
 /**
- * Decide whether an email should go out for a notification kind. A caller can
- * pass the recipient's saved preference map; when it doesn't carry an explicit
- * choice for the kind we fall back to {@link EMAIL_DEFAULTS}.
+ * Decide whether an email should go out for a notification kind. Precedence:
+ * the recipient's saved preference, then the admin-configured baseline, then
+ * the built-in {@link EMAIL_DEFAULTS}.
  */
 export function shouldEmailNotification(
   kind: NotificationKind,
   prefs?: EmailPrefMap
 ): boolean {
-  const override = prefs?.[kind];
-  if (typeof override === "boolean") return override;
-  return EMAIL_DEFAULTS[kind] ?? false;
+  const userPref = prefs?.[kind];
+  if (typeof userPref === "boolean") return userPref;
+  return effectiveEmailDefault(kind);
 }
 
 /**

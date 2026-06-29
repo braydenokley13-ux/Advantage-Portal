@@ -16,7 +16,8 @@ import {
   canDropTask,
   isValidTransition,
 } from "@/lib/kanban-rules";
-import { STATUS_DEFINITIONS, deriveSubState } from "@/lib/status";
+import { deriveSubState } from "@/lib/status";
+import { useStatusDefinitions } from "@/lib/use-status";
 import type { Task, TaskStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +25,7 @@ type BlockedToast = { title: string; reason: string } | null;
 
 export function KanbanBoard() {
   const { role, user } = useRole();
+  const statusDefs = useStatusDefinitions();
   const { tasks, submissions, reviews, setTaskStatus } = useStore();
   const submissionTaskMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -155,15 +157,15 @@ export function KanbanBoard() {
                   <ColumnDot status={status} />
                   <h3
                     className="text-sm font-semibold tracking-tight"
-                    title={STATUS_DEFINITIONS[status].description}
+                    title={statusDefs[status].description}
                   >
-                    {STATUS_LABELS[status]}
+                    {statusDefs[status].label}
                   </h3>
                 </div>
                 <Badge variant="secondary">{items.length}</Badge>
               </div>
               <p className="px-4 -mt-1 pb-2 text-[11px] text-muted-foreground">
-                {STATUS_DEFINITIONS[status].description}
+                {statusDefs[status].description}
               </p>
 
               <div className="flex-1 p-3 space-y-2 scroll-thin overflow-y-auto">
